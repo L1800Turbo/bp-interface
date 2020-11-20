@@ -33,7 +33,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#define DAB_DEBUG_ACTIVE 1
+//#define DAB_DEBUG_ACTIVE 1
 
 #include "bp_communication.h"
 

@@ -56,15 +56,21 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x17D, .command = 0x60}, /* BP_MSG_BUT_VOL_MIN  */
 		{.address = 0x17D, .command = 0x61}, /* BP_MSG_BUT_VOL_PLUS */
 
-		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x39}}, /* BP_MSG_LEAVE_VOL */
-		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3B}}, /* BP_MSG_LEAVE_AUD */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x39}}, /* BP_MSG_LEAVE_VOL  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3B}}, /* BP_MSG_LEAVE_AUD  */
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3F}}, /* BP_MSG_LEAVE_MUTE */
 
 		/* Messages to be sent */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x0F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_DOWN   */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x10}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_UP     */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x12}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_LEFT   */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x13}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_RIGHT  */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x16}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_AUD    */
 		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x22}, .waitAfter_ms = 10}, /* BP_MSG_ACK_REASED_17D */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x60}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_MIN */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x61}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_PLUS */
-
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x27}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_GEO    */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x3F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_dB     */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x60}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_MIN    */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x61}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_PLUS   */
 
 		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_TA_ACTIVE         */
 		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 20}, /* BP_MSG_TA_INACTIVE       */
@@ -192,8 +198,6 @@ void bpCommTasks(void)
 					idle_zwischen++;
 				}
 			}
-#else
-			//ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM); // TODO just skip it during logging
 #endif
 
 			if(idle_zwischen == 2)
@@ -221,7 +225,7 @@ void bpCommTasks(void)
 				data[1] = 0xFF;
 				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 2, 0x57, data, 1));
 
-				msg = buildTextMessage("Simu v03", 1);
+				msg = buildTextMessage("Simu v03", 10);
 				ringAdd(bpMsgState.writeBuf, msg);
 
 				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_TA_INACTIVE]);
@@ -235,7 +239,7 @@ void bpCommTasks(void)
 				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
 
 				//msg = buildTextMessage("Simu v03", 1);
-				msg = buildTextMessage("Lüm2020", 1);
+				msg = buildTextMessage("Plüm2000", 10);
 				ringAdd(bpMsgState.writeBuf, msg);
 
 				//uswusw...
@@ -261,16 +265,22 @@ void bpCommTasks(void)
 			/* Wait until we can send the next message */
 			if(HAL_GetTick() > bpMsgState.waitTickMs)
 			{
+				//printf("BP_SEND_WAIT: Time to send\r\n");
+
 				/* Go to sendig state if there is no further waiting nec. */
 				//if(sendRingMessage(RINGBUF_KEEP_ITEM) != RINGBUF_WAIT) // TODO sollte ok sein.. leer wäre auch komisch
 				if(sendRingMessage(&bpMsgState, RINGBUF_KEEP_ITEM) == RINGBUF_OK)
 				{
 					bpCommState = BP_SEND;
 				}
+				else
+				{
+					// TODO errorhandling
+				}
 			}
 			break;
 
-		case BP_SEND: /* Send initial states after activation */
+		case BP_SEND:
 
 			/* First message sent in state before, wait for response from radio. Check if the answers match */
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
@@ -299,6 +309,8 @@ void bpCommTasks(void)
 						{
 							/* Jump to next message to send */
 							ringNextReadInd(bpMsgState.writeBuf);
+
+							printf("Debug: Got echo to our message...\r\n");
 						}
 
 						/* Check for next message (or current again), or go to next state when no messages left */
@@ -604,7 +616,8 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 
 	bp_msg_dt msg;
 
-	char buf[8] = {0,};
+	uint8_t buf[8] = {0,};
+	uint8_t buf2[2] = {0,};
 //	uint8_t cnt = 0x01;
 
 	switch(messageIndex)
@@ -615,13 +628,42 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_BUT_6:
-			cnt+=8;
+			buf[0] = 0xFE;
+			buf[1] = 0xFF;
+			msg = buildMessage(0x175, 2, 0x77, buf, 10);
+			ringAdd(bpMsgState.writeBuf, msg);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
 		case BP_MSG_BUT_5:
-			cnt+=8;
+			buf[0] = 0xFD;
+			buf[1] = 0xFF;
+			msg = buildMessage(0x175, 2, 0x77, buf, 10);
+			ringAdd(bpMsgState.writeBuf, msg);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
 		case BP_MSG_BUT_4:
 			cnt+=8;
 		case BP_MSG_BUT_3:
-			cnt+=8;
+			printf("Button 3 pressed... \r\n");
+
+			if(++cnt > 0xFF)
+			{
+				cnt = 0;
+			}
+
+
+			buf2[0] = 0x00 + cnt<<4;
+			msg = buildMessage(0x175, 1, 0x70, buf2, 10);
+			ringAdd(bpMsgState.writeBuf, msg);
+
+			sprintf(buf,"0x%02X", buf2[0]);
+			msg = buildTextMessage(buf, 20);
+			ringAdd(bpMsgState.writeBuf, msg);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
 		case BP_MSG_BUT_2:
 			cnt+=8;
 		case BP_MSG_BUT_1:
@@ -637,17 +679,35 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 
 			bpCommState = BP_SEND_WAIT;
 			break;
-		//case BP_MSG_BUT_DOWN:
-		//case BP_MSG_BUT_UP:
-		//case BP_MSG_BUT_LEFT:
-		//case BP_MSG_BUT_RIGHT:
+
+		case BP_MSG_BUT_DOWN:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_DOWN]);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
+		case BP_MSG_BUT_UP:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_UP]);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
+		case BP_MSG_BUT_LEFT:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_LEFT]);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
+		case BP_MSG_BUT_RIGHT:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_RIGHT]);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
+
 		//case BP_MSG_BUT_DSC:
 		//case BP_MSG_BUT_LD:
 		//	break;
 		case BP_MSG_BUT_AUD:
 			printf("AUD gedrückt... \r\n");
-			msg = buildTextMessage("  Lena", 10);
-			ringAdd(bpMsgState.writeBuf, msg);
+
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_AUD]);
 			bpCommState = BP_SEND_WAIT;
 			break;
 
@@ -658,7 +718,6 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 		case BP_MSG_BUT_RELEASED_17D:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
 			bpCommState = BP_SEND_WAIT;
-
 			break;
 
 		case BP_MSG_BUT_SCA:
@@ -683,6 +742,10 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 		case BP_MSG_BUT_MIX:
 		case BP_MSG_BUT_GEO:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_GEO]);
+			bpCommState = BP_SEND_WAIT;
+			break;
+
 		case BP_MSG_BUT_TA:
 		case BP_MSG_BUT_lo:
 		case BP_MSG_BUT_AF:
@@ -690,7 +753,11 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 		case BP_MSG_BUT_dx:
 		case BP_MSG_BUT_FM:
 		case BP_MSG_BUT_TS:
+			break;
+
 		case BP_MSG_BUT_dB:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_dB]);
+			bpCommState = BP_SEND_WAIT;
 			break;
 
 		case BP_MSG_BUT_VOL_MIN:
@@ -707,6 +774,9 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 
 		case BP_MSG_LEAVE_VOL:
 			printf("\033[1;33mVerlasse VOL-Menü\033[0m\r\n");
+			msg = buildTextMessage("VOL verl.", 10);
+			ringAdd(bpMsgState.writeBuf, msg);
+			bpCommState = BP_SEND_WAIT;
 			break;
 
 		case BP_MSG_LEAVE_AUD:
@@ -771,6 +841,8 @@ ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en ne
 
 	ringbuf_status_en ringbufStatus = ringGet(msgState->writeBuf, &msg, RINGBUF_KEEP_ITEM);
 
+	printf("Debug: Sending %X;%d;%02X\r\n", msg.address, msg.dataLen, msg.command);
+
 	if(ringbufStatus == RINGBUF_NO_DATA)
 	{
 		return RINGBUF_NO_DATA;
@@ -827,23 +899,15 @@ void bpDebugPrint(void)
 
 	uint8_t debug_Print = 0; // TODO schöner machen
 
-	ringbuf_next_en keepItem = (bpCommState > BP_INIT_9600 ? RINGBUF_NEXT_ITEM : RINGBUF_KEEP_ITEM);
+	ringbuf_next_en keepItem = RINGBUF_KEEP_ITEM;
+
+#ifdef DAB_DEBUG_ACTIVE
+	keepItem = (bpCommState > BP_INIT_9600 ? RINGBUF_NEXT_ITEM : RINGBUF_KEEP_ITEM);
+#endif
 
 	if(ringGet(bpMsgState.readBuf, &msg_debug1, keepItem) == RINGBUF_OK)
 		  {
 			  debug_Print |= 0x01;
-			  //printf("hä? %lu\r\n", msg_debug1.timeStamp_ms);
-			  /*printf("\033[1;32m%lu;%X;%X;%X;%X;%X;%X;%X\033[0m\r\n",
-					  msg_debug2.timeStamp_ms,
-					  msg_debug2.address,
-					  msg_debug2.dataLen,
-					  msg_debug2.command,
-					  msg_debug2.data[0],
-					  msg_debug2.data[1],
-					  msg_debug2.data[2],
-					  msg_debug2.data[3]
-					  );*/
-			  //printMessagePos = (printMessagePos+1) % (bpMsgState.readBuf->bufSize);
 		  }
 
 	#ifdef DAB_DEBUG_ACTIVE
@@ -852,19 +916,9 @@ void bpDebugPrint(void)
 		  if(ringGet(bpMsgState_DAB.readBuf, &msg_debug2, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 		  {
 			  debug_Print |= 0x02;
-			  //printf("glubb? %lu\r\n", msg_debug2.timeStamp_ms);
-			  /*printf("\033[1;34m%lu;;;;;;;;;%X;%d;%X;%X;%X;%X;%X\033[0m\r\n",
-					  msg_debug2.timeStamp_ms,
-					  msg_debug2.address,
-					  msg_debug2.dataLen,
-					  msg_debug2.command,
-					  msg_debug2.data[0],
-					  msg_debug2.data[1],
-					  msg_debug2.data[2],
-					  msg_debug2.data[3]);*/
 		  }
 
-		  if(debug_Print & 0x03 && (msg_debug1.timeStamp_ms & 0xFFFFFFF8) == (msg_debug2.timeStamp_ms & 0xFFFFFFF8))
+		  /*if(debug_Print & 0x03 && (msg_debug1.timeStamp_ms & 0xFFFFFFF8) == (msg_debug2.timeStamp_ms & 0xFFFFFFF8))
 		  {
 			  debug_Print = 0;
 			  printf("\033[1;35m%lu;%X;%X;%X;%X;%X;%X;%X;;%X;%d;%X;%X;%X;%X\033[0m\r\n",
@@ -884,9 +938,9 @@ void bpDebugPrint(void)
 							  msg_debug2.data[2],
 							  msg_debug2.data[3]
 			  				  );
-		  }
+		  }*/
 
-		  if(debug_Print & 0x02)
+		  if(debug_Print & 0x02 && (msg_debug2.address == 0x170 || msg_debug2.address == 0x175))
 		  {
 			  debug_Print &= ~(1<<1);
 
@@ -902,7 +956,7 @@ void bpDebugPrint(void)
 		  }
 	#endif
 
-		  if(debug_Print & 0x01)
+		  if(debug_Print & 0x01 && (msg_debug1.address == 0x178 || msg_debug1.address == 0x17C || msg_debug1.address == 0x17D))
 		  {
 			  debug_Print &= ~(1<<0);
 			  printf("\033[1;33m%lu;%X;%d;%02X;%02X;%02X;%02X;%02X;;;;;;;;\033[0m\r\n",

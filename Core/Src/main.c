@@ -39,6 +39,7 @@ array weiter ausbauen
 - Als Compiler-Flag: Array kleiner als Enum?
 -unbekannte Nachrichten sollten gespeichert werden, am besten auch den Status drum herum
 
+- die Nachrichten auf einen eigenen Stack kleben, wenn sie zum Debuggen genommen werden sollen. Sonst fehlen immer welche...
 
 */
 
