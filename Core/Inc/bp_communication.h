@@ -72,6 +72,9 @@ typedef struct {
 	enum bp_msg_direction_en direction;		/* If we currently wait for messages (rcv) or send */
 
 	ringbuf_dt * readBuf;
+
+	ringbuf_dt * debugBuffer; // TODO: durch DEFINE ausbauen..
+
 	bp_msg_dt curReadMsg;					/* The message buffer we are currently writing in during receivement */
 
 	ringbuf_dt * writeBuf; // TODO: msgRing oder so? Buf ist doof, rx und tx buffer haben wir ja schon...

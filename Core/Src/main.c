@@ -115,20 +115,32 @@ static void MX_USART3_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
+/* Printf for USB CDC */
 int _write(int file, char *ptr, int len)
 {
 	extern USBD_HandleTypeDef hUsbDeviceFS;
+	extern enum bp_comm_state bpCommState;
+
+	char tmpBuffer[20];
+	uint8_t tmpLen;
+
+	// Add state to message
+	sprintf(tmpBuffer, " %02d |", bpCommState);
+
+	// Store length
+	tmpLen = strlen(tmpBuffer);
 	
 	// wait until the buffer is free
 	while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0);
 
 	// copy the string into the buffer (with size limit)
-	if (len > sizeof(buffer))
+	if (len+tmpLen > sizeof(buffer))
 	{ 
-		len = sizeof(buffer);
+		len = sizeof(buffer) - tmpLen;
 	}
 	
-	memcpy(buffer, ptr, len);
+	memcpy(buffer, tmpBuffer, tmpLen);
+	memcpy(buffer+tmpLen, ptr, len); // TODO: alles ungetestet
 	
 	CDC_Transmit_FS(buffer, len);
 

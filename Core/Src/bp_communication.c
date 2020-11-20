@@ -80,7 +80,8 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x175, .command = 0x56, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_ON      */
 		{.address = 0x175, .command = 0x57, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_OFF     */
 
-		{.address = 0x175, .command = 0x70, .dataLen = 1, .data[0] = 0x70, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_CHAN -> data[0]&1...6 -> Saved channel no */
+		{.address = 0x175, .command = 0x70, .dataLen = 1,                  .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_CHAN */
+		/* declaration according enum bp_msg_signal_channel_numbers */
 
 		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x00, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_I       */
 		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_II      */
@@ -93,8 +94,11 @@ void bpCommInit(void)
 	bpMsgState.writeBuf = ringInit(30);
 	bpMsgState.readBuf  = ringInit(20);
 
+	bpMsgState.debugBuffer = ringInit(20);
+
 #ifdef DAB_DEBUG_ACTIVE
-	bpMsgState_DAB.readBuf  = ringInit(20);
+	//bpMsgState_DAB.readBuf  = ringInit(20);
+	bpMsgState_DAB.debugBuffer = ringInit(20);
 #endif
 
 	bpMsgState.direction = MSG_DIRECTION_RECEIVE;
@@ -250,11 +254,6 @@ void bpCommTasks(void)
 				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x3F, data, 70));
 
 				printf("Activating our communication\r\n");
-				//while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0);
-				//CDC_Transmit_FS(buffer_tmp, strlen(buffer_tmp));
-
-				/* Wait for ???ms *///TODO Raus schmeißen
-				//bpMsgState.waitMs = HAL_GetTick() + 10; //TODO wie lange? Ist erst nur aus einer Aufzeichnung raus
 
 				bpCommState = BP_SEND_WAIT;
 			}
@@ -265,8 +264,6 @@ void bpCommTasks(void)
 			/* Wait until we can send the next message */
 			if(HAL_GetTick() > bpMsgState.waitTickMs)
 			{
-				//printf("BP_SEND_WAIT: Time to send\r\n");
-
 				/* Go to sendig state if there is no further waiting nec. */
 				//if(sendRingMessage(RINGBUF_KEEP_ITEM) != RINGBUF_WAIT) // TODO sollte ok sein.. leer wäre auch komisch
 				if(sendRingMessage(&bpMsgState, RINGBUF_KEEP_ITEM) == RINGBUF_OK)
@@ -285,8 +282,6 @@ void bpCommTasks(void)
 			/* First message sent in state before, wait for response from radio. Check if the answers match */
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 			{
-				//printf("Nachricht bekommen...\r\n");
-
 				/* Is this message a response to our/a message? */
 				if(msg.messageState == MSG_COMPLETE_RESPONSE) // TODO: Wenn der direkt antwortet, ist das keine Response...
 				{
@@ -300,10 +295,8 @@ void bpCommTasks(void)
 						{
 							printf("Answer from radio doesn't match our message (Rec: %X %X %X)!\r\n",
 									msg.address, msg.dataLen, msg.command);
-							//while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0);
-							//CDC_Transmit_FS(buffer_tmp, strlen(buffer_tmp));
 
-							/* Resend this message... */
+							// TODO: Errorhandling? Neu senden?
 						}
 						else
 						{
@@ -320,8 +313,6 @@ void bpCommTasks(void)
 
 							/* All messages seem to be sent correctly, go to next state */
 							bpCommState = BP_RUNNING;
-
-							//HAL_GPIO_TogglePin(LD6_GPIO_Port, LD6_Pin);
 						}
 						else
 						{
@@ -357,13 +348,6 @@ void bpCommTasks(void)
 					{
 						bpCommState = BP_RUNNING;
 					}
-
-					//printf("Unexpected message! Expected msg to be a response...\r\n");
-
-					//Error_Handler();
-
-					/* Clear ringbuffer for sending */
-					//ringClear(bpMsgState.writeBuf);
 
 					//bpCommState = BP_IDLE; TODO Testweise raus
 
@@ -525,6 +509,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				/* Add message to ring */
 				ringAdd(currState->readBuf, currState->curReadMsg);
 
+				//TODO durch DEFINE oder einzelne Config ausblenden
+				ringAdd(currState->debugBuffer, currState->curReadMsg);
+
 				/* Switch back to receive, ringbuffer writer can turn it back, if necessary */
 				bpMsgState.direction = MSG_DIRECTION_RECEIVE;
 
@@ -536,7 +523,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				//bpMsgState_DAB.readBuf->msg[bpMsgState_DAB.readBuf->writeInd].messageState  = MSG_COMPLETE;
 				bpMsgState_DAB.receivePosition			 = MSG_ADDRESS; // zusätzlich, da kein 0x14F
 
-				ringAdd(bpMsgState_DAB.readBuf, bpMsgState_DAB.curReadMsg);
+				ringAdd(bpMsgState_DAB.debugBuffer, bpMsgState_DAB.curReadMsg);
 				//ringNextWriteInd(bpMsgState_DAB.readBuf);
 #endif
 			}
@@ -897,96 +884,39 @@ void bpDebugPrint(void)
 	bp_msg_dt msg_debug2;
 #endif
 
-	uint8_t debug_Print = 0; // TODO schöner machen
-
-	ringbuf_next_en keepItem = RINGBUF_KEEP_ITEM;
+	if(ringGet(bpMsgState.debugBuffer, &msg_debug1, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
+	{
+		if(msg_debug1.address == 0x178 || msg_debug1.address == 0x17C || msg_debug1.address == 0x17D) // Just dump other addresses
+		{
+			printf("\033[1;33m%lu;%X;%d;%02X;%02X;%02X;%02X;%02X;;;;;;;;\033[0m\r\n",
+				  msg_debug1.timeStamp_ms,
+				  msg_debug1.address,
+				  msg_debug1.dataLen,
+				  msg_debug1.command,
+				  msg_debug1.data[0],
+				  msg_debug1.data[1],
+				  msg_debug1.data[2],
+				  msg_debug1.data[3]
+				  );
+		}
+	}
 
 #ifdef DAB_DEBUG_ACTIVE
-	keepItem = (bpCommState > BP_INIT_9600 ? RINGBUF_NEXT_ITEM : RINGBUF_KEEP_ITEM);
+	if(ringGet(bpMsgState_DAB.debugBuffer, &msg_debug2, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
+	{
+		if(msg_debug2.address == 0x170 || msg_debug2.address == 0x175) // Just dump other addresses
+		{
+			printf("\033[1;34m%lu;;;;;;;;;%X;%d;%02X;%02X;%02X;%02X;%02X\033[0m\r\n",
+						  msg_debug2.timeStamp_ms,
+						  msg_debug2.address,
+						  msg_debug2.dataLen,
+						  msg_debug2.command,
+						  msg_debug2.data[0],
+						  msg_debug2.data[1],
+						  msg_debug2.data[2],
+						  msg_debug2.data[3]);
+		}
+	}
 #endif
 
-	if(ringGet(bpMsgState.readBuf, &msg_debug1, keepItem) == RINGBUF_OK)
-		  {
-			  debug_Print |= 0x01;
-		  }
-
-	#ifdef DAB_DEBUG_ACTIVE
-
-		  //if(printMessagePos_debug != bpMsgState_DAB.readBuf->readInd)
-		  if(ringGet(bpMsgState_DAB.readBuf, &msg_debug2, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
-		  {
-			  debug_Print |= 0x02;
-		  }
-
-		  /*if(debug_Print & 0x03 && (msg_debug1.timeStamp_ms & 0xFFFFFFF8) == (msg_debug2.timeStamp_ms & 0xFFFFFFF8))
-		  {
-			  debug_Print = 0;
-			  printf("\033[1;35m%lu;%X;%X;%X;%X;%X;%X;%X;;%X;%d;%X;%X;%X;%X\033[0m\r\n",
-			  				  msg_debug1.timeStamp_ms,
-			  				  msg_debug1.address,
-			  				  msg_debug1.dataLen,
-			  				  msg_debug1.command,
-			  				  msg_debug1.data[0],
-			  				  msg_debug1.data[1],
-			  				  msg_debug1.data[2],
-			  				  msg_debug1.data[3],
-							  msg_debug2.address,
-							  msg_debug2.dataLen,
-							  msg_debug2.command,
-							  msg_debug2.data[0],
-							  msg_debug2.data[1],
-							  msg_debug2.data[2],
-							  msg_debug2.data[3]
-			  				  );
-		  }*/
-
-		  if(debug_Print & 0x02 && (msg_debug2.address == 0x170 || msg_debug2.address == 0x175))
-		  {
-			  debug_Print &= ~(1<<1);
-
-			  printf("\033[1;34m%lu;;;;;;;;;%X;%d;%02X;%02X;%02X;%02X;%02X\033[0m\r\n",
-			  				  msg_debug2.timeStamp_ms,
-			  				  msg_debug2.address,
-			  				  msg_debug2.dataLen,
-			  				  msg_debug2.command,
-			  				  msg_debug2.data[0],
-			  				  msg_debug2.data[1],
-			  				  msg_debug2.data[2],
-			  				  msg_debug2.data[3]);
-		  }
-	#endif
-
-		  if(debug_Print & 0x01 && (msg_debug1.address == 0x178 || msg_debug1.address == 0x17C || msg_debug1.address == 0x17D))
-		  {
-			  debug_Print &= ~(1<<0);
-			  printf("\033[1;33m%lu;%X;%d;%02X;%02X;%02X;%02X;%02X;;;;;;;;\033[0m\r\n",
-					  msg_debug1.timeStamp_ms,
-					  msg_debug1.address,
-					  msg_debug1.dataLen,
-					  msg_debug1.command,
-					  msg_debug1.data[0],
-					  msg_debug1.data[1],
-					  msg_debug1.data[2],
-					  msg_debug1.data[3]
-					  );
-		  }
-	/*
-		  if(printMessagePos != bpMsgState.readBuf->readInd) // Message to show available?
-		  {
-			  if(ringGet(bpMsgState.readBuf, &msg_debug1, RINGBUF_KEEP_ITEM) == RINGBUF_OK)
-			  {
-				  printf("%lu;%X;%X;%X;%X;%X;%X;%X\r\n",
-						  msg_debug1.timeStamp_ms,
-						  msg_debug1.address,
-						  msg_debug1.dataLen,
-						  msg_debug1.command,
-						  msg_debug1.data[0],
-						  msg_debug1.data[1],
-						  msg_debug1.data[2],
-						  msg_debug1.data[3]
-						  );
-			  }
-
-			  printMessagePos = (printMessagePos+1) % (bpMsgState.readBuf->bufSize);
-		  }*/
 }
