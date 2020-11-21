@@ -125,7 +125,7 @@ int _write(int file, char *ptr, int len)
 	uint8_t tmpLen;
 
 	// Add state to message
-	sprintf(tmpBuffer, " %02d |", bpCommState);
+	sprintf(tmpBuffer, " %02d | ", bpCommState);
 
 	// Store length
 	tmpLen = strlen(tmpBuffer);
@@ -142,7 +142,7 @@ int _write(int file, char *ptr, int len)
 	memcpy(buffer, tmpBuffer, tmpLen);
 	memcpy(buffer+tmpLen, ptr, len); // TODO: alles ungetestet
 	
-	CDC_Transmit_FS(buffer, len);
+	CDC_Transmit_FS(buffer, tmpLen+len);
 
 	return len;
 }

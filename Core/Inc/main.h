@@ -48,14 +48,14 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
 
-#define LED_RED_Port  LD3_GPIO_Port
-#define LED_RED_Pin   LD3_Pin
+#define LED_ORANGE_Port  LD3_GPIO_Port
+#define LED_ORANGE_Pin   LD3_Pin
 
-#define LED_tbd1_Port LD4_GPIO_Port
-#define LED_tbd1_Pin  LD4_Pin
+#define LED_GREEN_Port LD4_GPIO_Port
+#define LED_GREEN_Pin  LD4_Pin
 
-#define LED_tbd2_Port LD5_GPIO_Port
-#define LED_tbd2_Pin  LD5_Pin
+#define LED_RED_Port LD5_GPIO_Port
+#define LED_RED_Pin  LD5_Pin
 
 #define LED_BLUE_Port LD6_GPIO_Port
 #define LED_BLUE_Pin  LD6_Pin

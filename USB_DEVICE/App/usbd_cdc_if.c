@@ -259,9 +259,71 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   * @param  Len: Number of data received (in bytes)
   * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
   */
+
+//TODO temporär
+uint8_t msg = 0;
+uint16_t cdcData[20];
+
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+	extern bp_msg_state_dt bpMsgState;
+	extern enum bp_comm_state bpCommState;
+
+	CDC_Transmit_FS(Buf, *Len);
+
+	for(uint32_t i=0; i<*Len; i++)
+	{
+
+		if(Buf[i] == ' ') // Tabulator 0x09 kann putty über CopyPaste nicht
+		{
+			msg++;
+			HAL_GPIO_TogglePin(LED_ORANGE_Port, LED_ORANGE_Pin);
+		}
+		else if(Buf[i] == '\r')
+		{
+			msg++;
+			HAL_GPIO_TogglePin(LED_GREEN_Port, LED_GREEN_Pin);
+			//printf("Plu: %X", cdcData[0]);
+			//CDC_Transmit_FS((uint8_t*)cdcData, msg);
+
+			uint8_t data[8] = {0,};
+			if(cdcData[1] > 8)
+			{
+				cdcData[1] = 8;
+			}
+
+			for(uint8_t j=0; j<cdcData[1]; j++)
+			{
+				data[j] = (uint8_t) cdcData[3+j];
+			}
+
+			//memcpy(data, &cdcData[3], cdcData[1]*sizeof(uint8_t)); geht nicht, er müsste das ja immer abtrennen
+
+			ringAdd(bpMsgState.writeBuf, buildMessage(cdcData[0], cdcData[1], cdcData[2], data, 10));
+			bpCommState = BP_SEND_WAIT;
+
+			memset(cdcData, 0, (msg*sizeof(uint16_t)));
+			msg = 0;
+		}
+		else
+		{
+			uint8_t currNo = 0xF;
+
+			// TODO nur 0-9A-F akzeptieren...
+			if(Buf[i] >= '0' && Buf[i] <= '9')
+			{
+				currNo = Buf[i] - 0x30;
+			}
+			else if(Buf[i] >= 'A' && Buf[i] <= 'F')
+			{
+				currNo = Buf[i] - 0x41 + 10;
+			}
+
+			cdcData[msg] = (cdcData[msg]<<4) + currNo;
+		}
+	}
+
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
   return (USBD_OK);
@@ -309,6 +371,7 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 {
   uint8_t result = USBD_OK;
   /* USER CODE BEGIN 13 */
+
   UNUSED(Buf);
   UNUSED(Len);
   UNUSED(epnum);

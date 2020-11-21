@@ -57,6 +57,7 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x17D, .command = 0x61}, /* BP_MSG_BUT_VOL_PLUS */
 
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x39}}, /* BP_MSG_LEAVE_VOL  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x01, 0x3B}}, /* BP_MSG_ENTER_AUD  */
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3B}}, /* BP_MSG_LEAVE_AUD  */
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3F}}, /* BP_MSG_LEAVE_MUTE */
 
@@ -73,14 +74,14 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x61}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_PLUS   */
 
 		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_TA_ACTIVE         */
-		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 20}, /* BP_MSG_TA_INACTIVE       */
+		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_TA_INACTIVE       */
 		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_STATION_NOT_FOUND */
 		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 20}, /* BP_MSG_STATION_FOUND     */
 		{.address = 0x175, .command = 0x50								 , .waitAfter_ms = 20}, /* BP_MSG_TEXT              */
 		{.address = 0x175, .command = 0x56, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_ON      */
 		{.address = 0x175, .command = 0x57, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_OFF     */
 
-		{.address = 0x175, .command = 0x70, .dataLen = 1,                  .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_CHAN */
+		{.address = 0x175, .command = 0x70, .dataLen = 1, .data[0] = (SIG_NO_BAND|SIG_CHAN_NONE), .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_CHAN */
 		/* declaration according enum bp_msg_signal_channel_numbers */
 
 		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x00, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_I       */
@@ -210,6 +211,7 @@ void bpCommTasks(void)
 				/* Prepare to send messages in next step */
 				uint8_t data[2];
 
+
 				data[0] = 0x01;
 				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
 				data[0] = 0x42;
@@ -223,8 +225,11 @@ void bpCommTasks(void)
 				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 1));
 				data[0] = 0x42;
 				ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 1));
-				data[0] = 0x70;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x70, data, 1));
+				msg = bpMessages[BP_MSG_SIGNAL_CHAN];
+				//msg.data[0] = SIG_NO_BAND | SIG_CHAN_NONE; -> Already activated by default values
+				ringAdd(bpMsgState.writeBuf, msg);
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x70, data, 1));
+
 				data[0] = 0xEF;
 				data[1] = 0xFF;
 				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 2, 0x57, data, 1));
@@ -567,6 +572,7 @@ bp_msg_error compareMessages(bp_msg_dt * msg1, bp_msg_dt * msg2)
 
 bp_msg_en findMessage(bp_msg_dt * message)
 {
+	uint8_t found = 0;
 
 	for(bp_msg_en i=1; i<BP_MSG_SIZE; i++) // start with 1, 0 is "unknown message"
 	{
@@ -574,15 +580,25 @@ bp_msg_en findMessage(bp_msg_dt * message)
 		{
 			if(message->command == bpMessages[i].command)
 			{
+				found = 1;
 				// TODO: should just jump over if datalen <1 or not mentioned -> Testen
 				for(uint8_t j=0; j<message->dataLen; j++) // if dataLen is mentioned and we need to compare data
 				{
 					if(message->data[j] != bpMessages[i].data[j])
 					{
-						return BP_MSG_UNKNOWN;
+						//return BP_MSG_UNKNOWN;
+						found = 0;
+						break;
+					}
+					else
+					{
+						found = 1;
 					}
 				}
-				return i;
+				if(found == 1)
+				{
+					return i;
+				}
 			}
 		}
 	}
@@ -611,6 +627,17 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 	{
 		case BP_MSG_UNKNOWN:
 			// TODO: Loggen?
+
+			printf("\033[1;202mUnkown message: %X %d %02X %02X %02X %02X %02X\033[0m\r\n",
+				message->address,
+				message->dataLen,
+				message->command,
+				message->data[0],
+				message->data[1],
+				message->data[2],
+				message->data[3]
+				);
+
 			retVal = MSG_UNKNOWN;
 			break;
 
@@ -641,7 +668,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			}
 
 
-			buf2[0] = 0x00 + cnt<<4;
+			buf2[0] = 0x00 + (cnt<<4);
 			msg = buildMessage(0x175, 1, 0x70, buf2, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 
@@ -766,6 +793,10 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			bpCommState = BP_SEND_WAIT;
 			break;
 
+		case BP_MSG_ENTER_AUD:
+			printf("\033[1;33mGehe in AUD-Menü\033[0m\r\n");
+			break;
+
 		case BP_MSG_LEAVE_AUD:
 			printf("\033[1;33mVerlasse AUD-Menü\033[0m\r\n");
 			break;
@@ -825,6 +856,12 @@ bp_msg_dt buildTextMessage(char * text, uint32_t waitMs) // TODO: zunächst nur 
 ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en nextItem)
 {
 	bp_msg_dt msg;
+
+	if(bpMsgState.curReadMsg.messageState == MSG_INCOMPLETE)
+	{
+		printf("Debug: Already receiving a\r\n");
+		return RINGBUF_WRITE_BUSY; // TODO: ungetestet: müsste anderer Status, er empfängt gerade was und sollte später erst senden
+	}
 
 	ringbuf_status_en ringbufStatus = ringGet(msgState->writeBuf, &msg, RINGBUF_KEEP_ITEM);
 
