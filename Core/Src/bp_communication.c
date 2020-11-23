@@ -38,7 +38,7 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x17D, .command = 0x14}, /* BP_MSG_BUT_DSC      */
 		{.address = 0x17D, .command = 0x15}, /* BP_MSG_BUT_LD       */
 		{.address = 0x17D, .command = 0x16}, /* BP_MSG_BUT_AUD      */
-		{.address = 0x178, .command = 0x22}, /* BP_MSG_BUT_RELEASED_178, Knopf los gelassen 0x178 */
+		{.address = 0x178, .command = 0x22}, /* BP_MSG_BUT_SRC_RELEASED, Knopf los gelassen 0x178 */
 		{.address = 0x17C, .command = 0x22}, /* BP_MSG_BUT_RELEASED_17C, Knopf los gelassen 0x17C */
 		{.address = 0x17D, .command = 0x22}, /* BP_MSG_BUT_RELEASED_17D, Knopf los gelassen 0x17D */
 		{.address = 0x17D, .command = 0x23}, /* BP_MSG_BUT_SCA      */
@@ -62,6 +62,8 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3F}}, /* BP_MSG_LEAVE_MUTE */
 
 		/* Messages to be sent */
+		{.address = 0x175, .command = 0x30, .dataLen = 1, .data[0] = 0x01,      .waitAfter_ms = 60}, /* BP_MSG_ACK_ACTIVATE   */
+		{.address = 0x175, .command = 0x30, .dataLen = 1, .data[0] = 0x80,      .waitAfter_ms = 60}, /* BP_MSG_ACK_DEACTIVATE */
 		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x0F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_DOWN   */
 		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x10}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_UP     */
 		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x12}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_LEFT   */
@@ -75,8 +77,8 @@ static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 
 		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_TA_ACTIVE         */
 		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_TA_INACTIVE       */
-		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_STATION_NOT_FOUND */
-		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 20}, /* BP_MSG_STATION_FOUND     */
+		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 10}, /* BP_MSG_STATION_NOT_FOUND */
+		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_STATION_FOUND     */
 		{.address = 0x175, .command = 0x50								 , .waitAfter_ms = 20}, /* BP_MSG_TEXT              */
 		{.address = 0x175, .command = 0x56, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_ON      */
 		{.address = 0x175, .command = 0x57, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_OFF     */
@@ -110,9 +112,6 @@ void bpCommInit(void)
 	HAL_UART_Receive_IT(&huart3, (uint8_t*) bpMsgState.uart.rx_data_debug, 1);
 #endif
 }
-
-
-uint8_t idle_zwischen = 0; // TODO raus
 
 void bpCommTasks(void)
 {
@@ -189,80 +188,21 @@ void bpCommTasks(void)
 			break;
 
 		case BP_IDLE:
-
 #ifndef DAB_DEBUG_ACTIVE
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 			{
-				if(msg.command == 0x0B && msg.dataLen == 0) // TODO: abfragen, ob msg complete?
+				if(processBpMsg(&msg) == MSG_ERR_NONE)
 				{
-					idle_zwischen++;
+
+				}
+				else
+				{
+					// Unbekannte nachrichten fürs erste ignorieren?
 				}
 
-				if(msg.command == 0x22 && msg.dataLen == 0) // TODO: kann raus oder? Knopf losgelassen? -> demnächst raus werfen
-				{
-					idle_zwischen++;
-				}
+				//TODO: von hier sollte er dann auch wieder zurück in IDLE gehen, wenn er fertig ist...
 			}
 #endif
-
-			if(idle_zwischen == 2)
-			{
-				idle_zwischen = 0;
-				/* Prepare to send messages in next step */
-				uint8_t data[2];
-
-
-				data[0] = 0x01;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
-				data[0] = 0x42;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 85));
-				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_STATION_NOT_FOUND]);
-				data[0] = 0x80;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x14, data, 70));
-				data[0] = 0x80;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x9F, data, 1));
-				data[0] = 0x01;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 1));
-				data[0] = 0x42;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 1));
-				msg = bpMessages[BP_MSG_SIGNAL_CHAN];
-				//msg.data[0] = SIG_NO_BAND | SIG_CHAN_NONE; -> Already activated by default values
-				ringAdd(bpMsgState.writeBuf, msg);
-				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x70, data, 1));
-
-				data[0] = 0xEF;
-				data[1] = 0xFF;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 2, 0x57, data, 1));
-
-				msg = buildTextMessage("Simu v03", 10);
-				ringAdd(bpMsgState.writeBuf, msg);
-
-				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_TA_INACTIVE]);
-				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_SIGNAL_TS_T]); // TODO: Sinnvoll verwenden
-				data[0] = 0xEF;
-				data[1] = 0xFF;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 2, 0x57, data, 1));
-				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_SIGNAL_TA_OFF]);
-
-				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_VOL_PLUS]);
-				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
-
-				//msg = buildTextMessage("Simu v03", 1);
-				msg = buildTextMessage("Plüm2000", 10);
-				ringAdd(bpMsgState.writeBuf, msg);
-
-				//uswusw...
-
-				data[0] = 0x42;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 65));
-				data[0] = 0x80;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x3F, data, 70));
-
-				printf("Activating our communication\r\n");
-
-				bpCommState = BP_SEND_WAIT;
-			}
-
 			break;
 
 		case BP_SEND_WAIT:
@@ -641,6 +581,86 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			retVal = MSG_UNKNOWN;
 			break;
 
+		case BP_MSG_BUT_SRC: // TODO: nur auf losgelassen reagieren. Richtig?
+			break;
+
+		case BP_MSG_BUT_SRC_RELEASED:
+			if(bpCommState == BP_IDLE) // Run actication sequence TODO: und wenn er gerade sendet oder so?
+			{
+				uint8_t data[2];
+
+				/* Prepare to send messages in next step */
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_ACTIVATE]);
+				data[0] = 0x01;
+				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
+
+				//data[0] = 0x42;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 85));
+
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_STATION_NOT_FOUND]);
+
+				//data[0] = 0x80;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x14, data, 70));
+
+				//data[0] = 0x80;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x9F, data, 1));
+
+				//data[0] = 0x01;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 1));
+
+				//data[0] = 0x42;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 10));
+
+				//msg = bpMessages[BP_MSG_SIGNAL_CHAN];
+				//msg.data[0] = SIG_NO_BAND | SIG_CHAN_NONE; -> Already activated by default values
+				//ringAdd(bpMsgState.writeBuf, msg);
+
+				//data[0] = 0xEF;
+				//data[1] = 0xFF;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 2, 0x57, data, 10));
+
+				//msg = buildTextMessage("Simu v03", 10);
+				//ringAdd(bpMsgState.writeBuf, msg);
+
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_TA_INACTIVE]);
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_SIGNAL_TS_T]); // TODO: Sinnvoll verwenden
+				//data[0] = 0xEF;
+				//data[1] = 0xFF;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 2, 0x57, data, 10));
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_SIGNAL_TA_OFF]);
+
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_VOL_PLUS]);
+				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
+
+				//msg = buildTextMessage("Simu v03", 1);
+				msg = buildTextMessage("Plüm2000", 10);
+				ringAdd(bpMsgState.writeBuf, msg);
+
+				//uswusw...
+
+				//data[0] = 0x42;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 65));
+				//data[0] = 0x80;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x3F, data, 70));
+
+				printf("Activating our communication\r\n");
+			}
+			else
+			{
+				//uint8_t data[2];
+
+				//data[0] = 0x80;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
+				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_DEACTIVATE]);
+
+				printf("Deactivating DAB mode\r\n");
+
+				// TODO: states hier raus passt nicht. Muss ja auf IDLE
+			}
+
+			bpCommState = BP_SEND_WAIT;
+			break;
+
 		case BP_MSG_BUT_6:
 			buf[0] = 0xFE;
 			buf[1] = 0xFF;
@@ -806,7 +826,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		default:
-			printf("\033[1;33m(noch) nicht implementierter, bekannter Befehl... \033[0m\r\n");
+			printf("\033[1;33m(noch) nicht implementierter, bekannter Befehl, Index %d \033[0m\r\n", messageIndex);
 
 			break;
 	}
