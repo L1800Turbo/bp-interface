@@ -25,11 +25,11 @@ enum bp_comm_state {
   BP_IDLE,			/* Idle state after initialization, DAB not active            */
   //BP_ACTIVATE,		/* Send initial parameters after activation by radio          */
   BP_SEND_WAIT,
-  BP_SEND,
-  BP_RUNNING,
-  BP_SEARCH_PROGRAM, // oder so ähnlich...
-  BP_MENU,
-  BP_DEACTIVATE
+  BP_SEND
+  //BP_RUNNING,
+  //BP_SEARCH_PROGRAM, // oder so ähnlich...
+  //BP_MENU,
+  //BP_DEACTIVATE
 };
 
 enum bp_msg_rcv_pos {
@@ -38,12 +38,6 @@ enum bp_msg_rcv_pos {
 	MSG_CMD,
 	MSG_DATA
 };
-
-typedef enum {
-	MSG_ERR_NONE = 0,
-	MSG_UNKNOWN,
-	MSG_ERR_TRANSMISSION
-}bp_msg_error;
 
 enum bp_msg_response_en {
 	MSG_RESPONSE_INACTIVE = 0,
@@ -92,94 +86,12 @@ typedef struct {
 }bp_msg_state_dt;
 
 
-/* Message definition */
-typedef enum {
-	BP_MSG_UNKNOWN = 0,
-
-	/* Messages to be received */
-	BP_MSG_INIT_STATE,
-
-	BP_MSG_BUT_1,
-	BP_MSG_BUT_2,
-	BP_MSG_BUT_3,
-	BP_MSG_BUT_4,
-	BP_MSG_BUT_5,
-	BP_MSG_BUT_6,
-	BP_MSG_BUT_SRC,
-	BP_MSG_BUT_DOWN,
-	BP_MSG_BUT_UP,
-	BP_MSG_BUT_LEFT,
-	BP_MSG_BUT_RIGHT,
-	BP_MSG_BUT_DSC,
-	BP_MSG_BUT_LD,
-	BP_MSG_BUT_AUD,
-	BP_MSG_BUT_SRC_RELEASED,
-	BP_MSG_BUT_RELEASED_17C,
-	BP_MSG_BUT_RELEASED_17D,
-	BP_MSG_BUT_SCA,
-	BP_MSG_BUT_PS,
-	BP_MSG_BUT_MIX,
-	BP_MSG_BUT_GEO,
-	BP_MSG_BUT_TA,
-	BP_MSG_BUT_lo,
-	BP_MSG_BUT_AF,
-	BP_MSG_BUT_RM,
-	BP_MSG_BUT_dx,
-	BP_MSG_BUT_FM,
-	BP_MSG_BUT_TS,
-	BP_MSG_BUT_dB,
-	BP_MSG_BUT_VOL_MIN,
-	BP_MSG_BUT_VOL_PLUS,
-
-	BP_MSG_LEAVE_VOL,
-	BP_MSG_ENTER_AUD,
-	BP_MSG_LEAVE_AUD,
-	BP_MSG_LEAVE_MUTE,
-
-	/* Messages to be sent */
-	BP_MSG_ACK_ACTIVATE,
-	BP_MSG_ACK_DEACTIVATE,
-	BP_MSG_ACK_BUT_DOWN,
-	BP_MSG_ACK_BUT_UP,
-	BP_MSG_ACK_BUT_LEFT,
-	BP_MSG_ACK_BUT_RIGHT,
-	BP_MSG_ACK_BUT_AUD,
-	BP_MSG_ACK_REASED_17D,
-	BP_MSG_ACK_BUT_GEO,
-	BP_MSG_ACK_BUT_dB,
-	BP_MSG_ACK_VOL_MIN,
-	BP_MSG_ACK_VOL_PLUS,
-
-	BP_MSG_TA_ACTIVE,
-	BP_MSG_TA_INACTIVE,
-	BP_MSG_STATION_NOT_FOUND,
-	BP_MSG_STATION_FOUND,
-	BP_MSG_TEXT,
-	BP_MSG_SIGNAL_TA_ON,
-	BP_MSG_SIGNAL_TA_OFF,
-
-	BP_MSG_SIGNAL_CHAN,
-
-	BP_MSG_SIGNAL_TS_I,
-	BP_MSG_SIGNAL_TS_II,
-	BP_MSG_SIGNAL_TS_T,
-
-	BP_MSG_SIZE
-}bp_msg_en;
-
 
 void bpCommInit(void);
 void bpCommTasks(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
 
-bp_msg_error compareMessages(bp_msg_dt * msg1, bp_msg_dt * msg2);
-bp_msg_en findMessage(bp_msg_dt * message);
-
 bp_msg_error processBpMsg(bp_msg_dt * message);
-
-bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, uint8_t * data, uint32_t waitMs);
-bp_msg_dt buildTextMessage(char * text, uint32_t waitMs);
-
 ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en nextItem);
 
 void bpDebugPrint(void);

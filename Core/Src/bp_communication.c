@@ -17,79 +17,7 @@ bp_msg_state_dt bpMsgState;
 bp_msg_state_dt bpMsgState_DAB; /* For debugging and listening between DAB and radio */
 #endif
 
-static const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
-		{0}, /* BP_MSG_UNKNOWN */
-
-		/* Messages to be received */
-		{.address = 0x175, .command = 0x48}, /* BP_MSG_INIT_STATE */
-
-		/* Buttons */
-		{.address = 0x17D, .command = 0x01}, /* BP_MSG_BUT_1        */
-		{.address = 0x17D, .command = 0x02}, /* BP_MSG_BUT_2        */
-		{.address = 0x17D, .command = 0x03}, /* BP_MSG_BUT_3        */
-		{.address = 0x17D, .command = 0x04}, /* BP_MSG_BUT_4        */
-		{.address = 0x17D, .command = 0x05}, /* BP_MSG_BUT_5        */
-		{.address = 0x17D, .command = 0x06}, /* BP_MSG_BUT_6        */
-		{.address = 0x178, .command = 0x0B}, /* BP_MSG_BUT_SRC,  Andere Adresse! */
-		{.address = 0x17D, .command = 0x0F}, /* BP_MSG_BUT_DOWN     */
-		{.address = 0x17D, .command = 0x10}, /* BP_MSG_BUT_UP       */
-		{.address = 0x17D, .command = 0x12}, /* BP_MSG_BUT_LEFT     */
-		{.address = 0x17D, .command = 0x13}, /* BP_MSG_BUT_RIGHT    */
-		{.address = 0x17D, .command = 0x14}, /* BP_MSG_BUT_DSC      */
-		{.address = 0x17D, .command = 0x15}, /* BP_MSG_BUT_LD       */
-		{.address = 0x17D, .command = 0x16}, /* BP_MSG_BUT_AUD      */
-		{.address = 0x178, .command = 0x22}, /* BP_MSG_BUT_SRC_RELEASED, Knopf los gelassen 0x178 */
-		{.address = 0x17C, .command = 0x22}, /* BP_MSG_BUT_RELEASED_17C, Knopf los gelassen 0x17C */
-		{.address = 0x17D, .command = 0x22}, /* BP_MSG_BUT_RELEASED_17D, Knopf los gelassen 0x17D */
-		{.address = 0x17D, .command = 0x23}, /* BP_MSG_BUT_SCA      */
-		{.address = 0x17D, .command = 0x25}, /* BP_MSG_BUT_PS       */
-		{.address = 0x17D, .command = 0x26}, /* BP_MSG_BUT_MIX      */
-		{.address = 0x17D, .command = 0x27}, /* BP_MSG_BUT_GEO      */
-		{.address = 0x17C, .command = 0x2A}, /* BP_MSG_BUT_TA,  Andere Adresse! */
-		{.address = 0x17D, .command = 0x2B}, /* BP_MSG_BUT_lo       */
-		{.address = 0x17D, .command = 0x2C}, /* BP_MSG_BUT_AF       */
-		{.address = 0x17D, .command = 0x2D}, /* BP_MSG_BUT_RM       */
-		{.address = 0x17D, .command = 0x2E}, /* BP_MSG_BUT_dx       */
-		{.address = 0x17D, .command = 0x31}, /* BP_MSG_BUT_FM       */
-		{.address = 0x17D, .command = 0x38}, /* BP_MSG_BUT_TS       */
-		{.address = 0x17D, .command = 0x3F}, /* BP_MSG_BUT_dB       */
-		{.address = 0x17D, .command = 0x60}, /* BP_MSG_BUT_VOL_MIN  */
-		{.address = 0x17D, .command = 0x61}, /* BP_MSG_BUT_VOL_PLUS */
-
-		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x39}}, /* BP_MSG_LEAVE_VOL  */
-		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x01, 0x3B}}, /* BP_MSG_ENTER_AUD  */
-		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3B}}, /* BP_MSG_LEAVE_AUD  */
-		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3F}}, /* BP_MSG_LEAVE_MUTE */
-
-		/* Messages to be sent */
-		{.address = 0x175, .command = 0x30, .dataLen = 1, .data[0] = 0x01,      .waitAfter_ms = 60}, /* BP_MSG_ACK_ACTIVATE   */
-		{.address = 0x175, .command = 0x30, .dataLen = 1, .data[0] = 0x80,      .waitAfter_ms = 60}, /* BP_MSG_ACK_DEACTIVATE */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x0F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_DOWN   */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x10}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_UP     */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x12}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_LEFT   */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x13}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_RIGHT  */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x16}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_AUD    */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x22}, .waitAfter_ms = 10}, /* BP_MSG_ACK_REASED_17D */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x27}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_GEO    */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x3F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_dB     */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x60}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_MIN    */
-		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x61}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_PLUS   */
-
-		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_TA_ACTIVE         */
-		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_TA_INACTIVE       */
-		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 10}, /* BP_MSG_STATION_NOT_FOUND */
-		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_STATION_FOUND     */
-		{.address = 0x175, .command = 0x50								 , .waitAfter_ms = 20}, /* BP_MSG_TEXT              */
-		{.address = 0x175, .command = 0x56, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_ON      */
-		{.address = 0x175, .command = 0x57, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_OFF     */
-
-		{.address = 0x175, .command = 0x70, .dataLen = 1, .data[0] = (SIG_NO_BAND|SIG_CHAN_NONE), .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_CHAN */
-		/* declaration according enum bp_msg_signal_channel_numbers */
-
-		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x00, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_I       */
-		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_II      */
-		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x30, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_T       */
-};
+extern const bp_msg_dt bpMessages[];
 
 void bpCommInit(void)
 {
@@ -117,6 +45,14 @@ void bpCommTasks(void)
 {
 	bp_msg_dt msg;
 
+	// Check for message timeouts, if we're receiving a message
+	if(bpMsgState.curReadMsg.messageState == MSG_INCOMPLETE &&
+			(HAL_GetTick()-bpMsgState.curReadMsg.timeStamp_ms) > 2500) //TODO: generischen Timeout festlegen
+	{
+		printf("E: Timeout while receiving message!\r\n");
+		bpMsgState.curReadMsg.messageState = MSG_FAIL;
+	}
+
 	switch(bpCommState)
 	{
 		case BP_UNINITIALIZED:
@@ -126,17 +62,19 @@ void bpCommTasks(void)
 			//break;
 
 		case BP_INIT_4800:
-
-			//if(bpMsgState.processMessagePos != bpMsgState.currentMessagePos) TODO: weg wenn Ringbuffer geht
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 			{
-				// TODO: Werte irgendwie ablegen, soweit sinnvoll
+				// TODO:
+				// Initialization includes also these 4800 Baud commands
+				// 178	1	48	01	00	00	00
+				// 17C	1	48	01	00	00	00
+				// 17C	1	48	01	00	00	00
+				// 17D	1	48	01	00	00	00
 
 				/* after cmd 0x48 with data 0x02 radio switches to 9600 baud */
 				if(msg.command == 0x48 && msg.data[0] == 0x02)
 				{
 					HAL_UART_DeInit(&huart2);
-					//HAL_UART_Abort(&huart2);
 
 					huart2.Init.BaudRate = 9600;
 					if (HAL_UART_Init(&huart2) != HAL_OK)
@@ -160,16 +98,11 @@ void bpCommTasks(void)
 
 					bpCommState = BP_INIT_9600;
 					printf("Finished init 4800\r\n");
-					//while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0);
-					//CDC_Transmit_FS(buffer_tmp, strlen(buffer_tmp));
 				}
-				// TODO: done by ringget oben
-				//bpMsgState.processMessagePos = (bpMsgState.processMessagePos+1) % (BP_MAX_MESSAGES);
 		    }
 			break;
 
 		case BP_INIT_9600:
-			//if(bpMsgState.processMessagePos != bpMsgState.currentMessagePos)
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 			{
 				// TODO: Werte irgendwie ablegen, soweit sinnvoll, so wie oben
@@ -179,8 +112,6 @@ void bpCommTasks(void)
 				{
 					bpCommState = BP_IDLE;
 					printf("Finished init 9600\r\n");
-					//while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0);
-					//CDC_Transmit_FS(buffer_tmp, strlen(buffer_tmp));
 				}
 
 				//bpMsgState.processMessagePos = (bpMsgState.processMessagePos+1) % (BP_MAX_MESSAGES);
@@ -199,8 +130,6 @@ void bpCommTasks(void)
 				{
 					// Unbekannte nachrichten fürs erste ignorieren?
 				}
-
-				//TODO: von hier sollte er dann auch wieder zurück in IDLE gehen, wenn er fertig ist...
 			}
 #endif
 			break;
@@ -210,7 +139,6 @@ void bpCommTasks(void)
 			if(HAL_GetTick() > bpMsgState.waitTickMs)
 			{
 				/* Go to sendig state if there is no further waiting nec. */
-				//if(sendRingMessage(RINGBUF_KEEP_ITEM) != RINGBUF_WAIT) // TODO sollte ok sein.. leer wäre auch komisch
 				if(sendRingMessage(&bpMsgState, RINGBUF_KEEP_ITEM) == RINGBUF_OK)
 				{
 					bpCommState = BP_SEND;
@@ -227,6 +155,12 @@ void bpCommTasks(void)
 			/* First message sent in state before, wait for response from radio. Check if the answers match */
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 			{
+				/* Cancel if something went wrong */
+				if(msg.messageState == MSG_FAIL)
+				{
+					bpCommState = BP_IDLE;
+				}
+
 				/* Is this message a response to our/a message? */
 				if(msg.messageState == MSG_COMPLETE_RESPONSE) // TODO: Wenn der direkt antwortet, ist das keine Response...
 				{
@@ -256,8 +190,8 @@ void bpCommTasks(void)
 						{
 							printf("Going to running state\r\n");
 
-							/* All messages seem to be sent correctly, go to next state */
-							bpCommState = BP_RUNNING;
+							/* All messages seem to be sent correctly, go back to idle */
+							bpCommState = BP_IDLE;
 						}
 						else
 						{
@@ -291,7 +225,7 @@ void bpCommTasks(void)
 					/* Skip directly if the write buffer is empty */
 					if(ringReadAvailable(bpMsgState.writeBuf) == RINGBUF_NO_DATA)
 					{
-						bpCommState = BP_RUNNING;
+						bpCommState = BP_IDLE;
 					}
 
 					//bpCommState = BP_IDLE; TODO Testweise raus
@@ -300,40 +234,18 @@ void bpCommTasks(void)
 				}
 
 			}
-
-			break;
-
-		case BP_RUNNING:
-			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
-			{
-				if(processBpMsg(&msg) == MSG_ERR_NONE)
-				{
-
-				}
-				else
-				{
-					// Unbekannte nachrichten fürs erste ignorieren?
-				}
-
-				//bpMsgState.processMessagePos = (bpMsgState.processMessagePos+1) % (BP_MAX_MESSAGES);
-			}
-
-			// TODO: Periodisch Text senden, oder?
-			// hier ist dann auch der Teil, dass er beim RingbufferSenden erst schauen soll,
-			// ob gerade eine Nachricht empfangen wird, bzw. die 14F lange genug her ist
-
-			break;
-		case BP_SEARCH_PROGRAM:
-		case BP_MENU:
-		case BP_DEACTIVATE: /* Send states after deactivation */
-			// TODO: noch deinitialisierungssachen einbauen...
-
-			bpCommState = BP_IDLE;
 			break;
 	}
 }
 
-
+/**
+ * void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+ * UART communication to BP radio
+ *
+ * Inputs:
+ * UART_HandleTypeDef *huart: matching UART handle, currently HW dependend
+ *
+ */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
 	bp_msg_state_dt * currState;
@@ -360,6 +272,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 	HAL_GPIO_TogglePin(LED_BLUE_Port, LED_BLUE_Pin);
 
+	/* Restart if there was a failure in a previous message */
+	if(currState->curReadMsg.messageState == MSG_FAIL)
+	{
+		currState->direction = MSG_DIRECTION_RECEIVE;
+		currState->receivePosition = MSG_ADDRESS;
+	}
+
 	switch(currState->receivePosition)
 	{
 		case MSG_ADDRESS:
@@ -368,20 +287,14 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				cur_rx_data[0] == BP_ADD_RADIO_17C ||
 				cur_rx_data[0] == BP_ADD_RADIO_BUTTON_17D ) ) // TODO für debug das hier nicht?
 			{
-				//currState->readBuf->msg[currState->readBuf->writeInd].address      = cur_rx_data[0];
 				currState->curReadMsg.address      = cur_rx_data[0];
 				currState->curReadMsg.timeStamp_ms = HAL_GetTick(); // Get current timestamp
-				//currState->readBuf->msg[currState->readBuf->writeInd].timeStamp_ms = HAL_GetTick(); // Get current timestamp
 
-				// TODO: hier sollte die current message gelöscht werden.... memset?
-
+				/* Set to default values */
 				currState->curReadMsg.dataLen = 99;
-				//currState->readBuf->msg[currState->readBuf->writeInd].dataLen = 99;
 				for(uint8_t i=0; i<sizeof(currState->curReadMsg.data); i++)
-				//for(uint8_t i=0; i<sizeof(currState->readBuf->msg[currState->readBuf->writeInd].data); i++)
 				{
 					currState->curReadMsg.data[i] = 0;
-					//currState->readBuf->msg[currState->readBuf->writeInd].data[i] = 0;
 				}
 
 				/* Reply to received bytes */
@@ -389,23 +302,20 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				{
 					currState->responseActive = MSG_RESPONSE_ACTIVE;
 				}
-				currState->curReadMsg.messageState = MSG_INCOMPLETE;
-				//currState->readBuf->msg[currState->readBuf->writeInd].messageState = MSG_INCOMPLETE;
 
+				currState->curReadMsg.messageState = MSG_INCOMPLETE;
 				currState->receivePosition = MSG_LENGTH;
 			}
 			break;
 
 		case MSG_LENGTH:
 			currState->curReadMsg.dataLen = (uint8_t) cur_rx_data[0];
-			//currState->readBuf->msg[currState->readBuf->writeInd].dataLen = (uint8_t) cur_rx_data[0];
 
 			currState->receivePosition = MSG_CMD;
 			break;
 
 		case MSG_CMD:
 			currState->curReadMsg.command = (uint8_t) cur_rx_data[0];
-			//currState->readBuf->msg[currState->readBuf->writeInd].command = (uint8_t) cur_rx_data[0];
 
 			currState->currentDataByte = 0;
 			currState->receivePosition = MSG_DATA;
@@ -439,17 +349,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 				if(bpMsgState.direction == MSG_DIRECTION_SEND) /* If this message is expected to be a response from the radio to our msg */
 				{
 					currState->curReadMsg.messageState = MSG_COMPLETE_RESPONSE;
-					//currState->readBuf->msg[currState->readBuf->writeInd].messageState = MSG_COMPLETE_RESPONSE;
 				}
 				else
 				{
 					currState->curReadMsg.messageState = MSG_COMPLETE;
-					//currState->readBuf->msg[currState->readBuf->writeInd].messageState = MSG_COMPLETE;
 				}
-
-				// Next position in buffer
-				//currState->currentMessagePos     = (currState->currentMessagePos+1) % (BP_MAX_MESSAGES);
-				//ringNextWriteInd(currState->readBuf);
 
 				/* Add message to ring */
 				ringAdd(currState->readBuf, currState->curReadMsg);
@@ -492,60 +396,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 }
 
 
-
-bp_msg_error compareMessages(bp_msg_dt * msg1, bp_msg_dt * msg2)
-{
-	if(msg1->address == msg2->address && msg1->dataLen == msg2->dataLen && msg1->command == msg2->command)
-	{
-		for(uint8_t i=0; i<msg1->dataLen; i++)
-		{
-			if(msg1->data[i] != msg2->data[i])
-			{
-				return MSG_ERR_TRANSMISSION; // Return that there seems to be something wrong with the transmission
-			}
-		}
-
-		return MSG_ERR_NONE;
-	}
-	return MSG_ERR_TRANSMISSION;
-}
-
-bp_msg_en findMessage(bp_msg_dt * message)
-{
-	uint8_t found = 0;
-
-	for(bp_msg_en i=1; i<BP_MSG_SIZE; i++) // start with 1, 0 is "unknown message"
-	{
-		if(message->address == bpMessages[i].address)
-		{
-			if(message->command == bpMessages[i].command)
-			{
-				found = 1;
-				// TODO: should just jump over if datalen <1 or not mentioned -> Testen
-				for(uint8_t j=0; j<message->dataLen; j++) // if dataLen is mentioned and we need to compare data
-				{
-					if(message->data[j] != bpMessages[i].data[j])
-					{
-						//return BP_MSG_UNKNOWN;
-						found = 0;
-						break;
-					}
-					else
-					{
-						found = 1;
-					}
-				}
-				if(found == 1)
-				{
-					return i;
-				}
-			}
-		}
-	}
-
-	return BP_MSG_UNKNOWN;
-}
-
 /**
   * @brief Process a message from the radio
   * @param received message
@@ -585,19 +435,20 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_BUT_SRC_RELEASED:
-			if(bpCommState == BP_IDLE) // Run actication sequence TODO: und wenn er gerade sendet oder so?
+			//if(bpCommState == BP_IDLE) // Run actication sequence TODO: und wenn er gerade sendet oder so?
+			if(stateFlags.bpDabActive == bp_DAB_inactive)
 			{
 				uint8_t data[2];
 
 				/* Prepare to send messages in next step */
-				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_ACTIVATE]);
-				data[0] = 0x01;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
+				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_ACTIVATE]);
+				//data[0] = 0x01;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
 
-				//data[0] = 0x42;
-				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 85));
+				data[0] = 0x42;
+				ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 85));
 
-				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_STATION_NOT_FOUND]);
+				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_STATION_NOT_FOUND]);
 
 				//data[0] = 0x80;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x14, data, 70));
@@ -605,15 +456,14 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				//data[0] = 0x80;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x9F, data, 1));
 
-				//data[0] = 0x01;
-				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 1));
+				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_ACTIVATE]);
 
 				//data[0] = 0x42;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 10));
 
-				//msg = bpMessages[BP_MSG_SIGNAL_CHAN];
+				msg = bpMessages[BP_MSG_SIGNAL_CHAN];
 				//msg.data[0] = SIG_NO_BAND | SIG_CHAN_NONE; -> Already activated by default values
-				//ringAdd(bpMsgState.writeBuf, msg);
+				ringAdd(bpMsgState.writeBuf, msg);
 
 				//data[0] = 0xEF;
 				//data[1] = 0xFF;
@@ -637,25 +487,25 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				ringAdd(bpMsgState.writeBuf, msg);
 
 				//uswusw...
+				msg = buildTextMessage("Yo → ß⮟→", 10);
+				ringAdd(bpMsgState.writeBuf, msg);
 
 				//data[0] = 0x42;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 65));
 				//data[0] = 0x80;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x3F, data, 70));
 
+				stateFlags.bpDabActive = bp_DAB_active;
+
 				printf("Activating our communication\r\n");
 			}
 			else
 			{
-				//uint8_t data[2];
-
-				//data[0] = 0x80;
-				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
 				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_DEACTIVATE]);
+				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_DEACTIVATE]);
+				stateFlags.bpDabActive = bp_DAB_inactive;
 
 				printf("Deactivating DAB mode\r\n");
-
-				// TODO: states hier raus passt nicht. Muss ja auf IDLE
 			}
 
 			bpCommState = BP_SEND_WAIT;
@@ -834,43 +684,6 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 	return retVal;
 }
 
-
-/* Create a custom message (mostly for unknown msgs) */
-bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, uint8_t * data, uint32_t waitMs)
-{
-	bp_msg_dt msg;
-
-	msg.address = address;
-	msg.dataLen = dataLen;
-	msg.command = command;
-	memcpy(msg.data, data, dataLen);
-
-	msg.timeStamp_ms = HAL_GetTick();
-	msg.waitAfter_ms = waitMs;
-	msg.messageState = MSG_COMPLETE;
-
-	return msg;
-}
-
-bp_msg_dt buildTextMessage(char * text, uint32_t waitMs) // TODO: zunächst nur einfache Texte, die den Bildschirm 1x füllen
-{
-	uint8_t textLen = 0;
-	char outbuf[25];
-
-	utf2bp(text, strlen(text), outbuf, sizeof(outbuf));
-
-	textLen = strlen(outbuf);
-	if(textLen > 8)
-	{
-		textLen = 8;
-		// TODO ausrichten (zentrieren, links, ..) und so...
-		// später: Texte mit > 8 Zeichen nacheinander ausgeben? Je nach Status, ob wir active sind? Buffer bauen und der reihe nach ausgeben?
-
-	}
-
-	//return buildMessage(bpMessages[BP_MSG_TEXT].address, textLen, bpMessages[BP_MSG_TEXT].command, text, waitMs);
-	return buildMessage(bpMessages[BP_MSG_TEXT].address, textLen, bpMessages[BP_MSG_TEXT].command, outbuf, waitMs);
-}
 
 /* Send a ring message, if available */
 ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en nextItem)

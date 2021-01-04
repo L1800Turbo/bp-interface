@@ -1,191 +1,166 @@
 #include "bp_messages.h"
 
-/* Convert message into BP compatible coding */
-void utf2bp(const char * inBuf, uint8_t inBufLen, char * outBuf, uint8_t outBufLen)
+const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
+		{0}, /* BP_MSG_UNKNOWN */
+
+		/* Messages to be received */
+		{.address = 0x175, .command = 0x48}, /* BP_MSG_INIT_STATE */
+
+		/* Buttons */
+		{.address = 0x17D, .command = 0x01}, /* BP_MSG_BUT_1        */
+		{.address = 0x17D, .command = 0x02}, /* BP_MSG_BUT_2        */
+		{.address = 0x17D, .command = 0x03}, /* BP_MSG_BUT_3        */
+		{.address = 0x17D, .command = 0x04}, /* BP_MSG_BUT_4        */
+		{.address = 0x17D, .command = 0x05}, /* BP_MSG_BUT_5        */
+		{.address = 0x17D, .command = 0x06}, /* BP_MSG_BUT_6        */
+		{.address = 0x178, .command = 0x0B}, /* BP_MSG_BUT_SRC,  Andere Adresse! */
+		{.address = 0x17D, .command = 0x0F}, /* BP_MSG_BUT_DOWN     */
+		{.address = 0x17D, .command = 0x10}, /* BP_MSG_BUT_UP       */
+		{.address = 0x17D, .command = 0x12}, /* BP_MSG_BUT_LEFT     */
+		{.address = 0x17D, .command = 0x13}, /* BP_MSG_BUT_RIGHT    */
+		{.address = 0x17D, .command = 0x14}, /* BP_MSG_BUT_DSC      */
+		{.address = 0x17D, .command = 0x15}, /* BP_MSG_BUT_LD       */
+		{.address = 0x17D, .command = 0x16}, /* BP_MSG_BUT_AUD      */
+		{.address = 0x178, .command = 0x22}, /* BP_MSG_BUT_SRC_RELEASED, Knopf los gelassen 0x178 */
+		{.address = 0x17C, .command = 0x22}, /* BP_MSG_BUT_RELEASED_17C, Knopf los gelassen 0x17C */
+		{.address = 0x17D, .command = 0x22}, /* BP_MSG_BUT_RELEASED_17D, Knopf los gelassen 0x17D */
+		{.address = 0x17D, .command = 0x23}, /* BP_MSG_BUT_SCA      */
+		{.address = 0x17D, .command = 0x25}, /* BP_MSG_BUT_PS       */
+		{.address = 0x17D, .command = 0x26}, /* BP_MSG_BUT_MIX      */
+		{.address = 0x17D, .command = 0x27}, /* BP_MSG_BUT_GEO      */
+		{.address = 0x17C, .command = 0x2A}, /* BP_MSG_BUT_TA,  Andere Adresse! */
+		{.address = 0x17D, .command = 0x2B}, /* BP_MSG_BUT_lo       */
+		{.address = 0x17D, .command = 0x2C}, /* BP_MSG_BUT_AF       */
+		{.address = 0x17D, .command = 0x2D}, /* BP_MSG_BUT_RM       */
+		{.address = 0x17D, .command = 0x2E}, /* BP_MSG_BUT_dx       */
+		{.address = 0x17D, .command = 0x31}, /* BP_MSG_BUT_FM       */
+		{.address = 0x17D, .command = 0x38}, /* BP_MSG_BUT_TS       */
+		{.address = 0x17D, .command = 0x3F}, /* BP_MSG_BUT_dB       */
+		{.address = 0x17D, .command = 0x60}, /* BP_MSG_BUT_VOL_MIN  */
+		{.address = 0x17D, .command = 0x61}, /* BP_MSG_BUT_VOL_PLUS */
+
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x39}}, /* BP_MSG_LEAVE_VOL  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x01, 0x3B}}, /* BP_MSG_ENTER_AUD  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3B}}, /* BP_MSG_LEAVE_AUD  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3F}}, /* BP_MSG_LEAVE_MUTE */
+
+		/* Messages to be sent */
+		{.address = 0x175, .command = 0x30, .dataLen = 1, .data[0] = 0x01,      .waitAfter_ms = 60}, /* BP_MSG_ACK_ACTIVATE   */
+		{.address = 0x175, .command = 0x30, .dataLen = 1, .data[0] = 0x80,      .waitAfter_ms = 60}, /* BP_MSG_ACK_DEACTIVATE */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x0F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_DOWN   */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x10}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_UP     */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x12}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_LEFT   */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x13}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_RIGHT  */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x16}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_AUD    */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x22}, .waitAfter_ms = 10}, /* BP_MSG_ACK_REASED_17D */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x27}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_GEO    */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x3F}, .waitAfter_ms = 10}, /* BP_MSG_ACK_BUT_dB     */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x60}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_MIN    */
+		{.address = 0x175, .command = 0x30, .dataLen = 2, .data = {0x09, 0x61}, .waitAfter_ms = 10}, /* BP_MSG_ACK_VOL_PLUS   */
+
+		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 20}, /* BP_MSG_TA_ACTIVE         */
+		{.address = 0x175, .command = 0x2A, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_TA_INACTIVE       */
+		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x01, .waitAfter_ms = 10}, /* BP_MSG_STATION_NOT_FOUND */
+		{.address = 0x175, .command = 0x3F, .dataLen = 1, .data[0] = 0x80, .waitAfter_ms = 10}, /* BP_MSG_STATION_FOUND     */
+		{.address = 0x175, .command = 0x50								 , .waitAfter_ms = 20}, /* BP_MSG_TEXT              */
+		{.address = 0x175, .command = 0x56, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_ON      */
+		{.address = 0x175, .command = 0x57, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TA_OFF     */
+
+		{.address = 0x175, .command = 0x70, .dataLen = 1, .data[0] = (SIG_NO_BAND|SIG_CHAN_NONE), .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_CHAN */
+		/* declaration according enum bp_msg_signal_channel_numbers */
+
+		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x00, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_I       */
+		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x10, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_II      */
+		{.address = 0x175, .command = 0x72, .dataLen = 1, .data[0] = 0x30, .waitAfter_ms = 20}, /* BP_MSG_SIGNAL_TS_T       */
+};
+
+bp_msg_error compareMessages(bp_msg_dt * msg1, bp_msg_dt * msg2)
 {
-	uint32_t cUtf = 0;
-	char * outPtr = outBuf;
-
-	for(uint8_t i=0; i<inBufLen; i++)
+	if(msg1->address == msg2->address && msg1->dataLen == msg2->dataLen && msg1->command == msg2->command)
 	{
-		if(inBuf[i] == 0)
+		for(uint8_t i=0; i<msg1->dataLen; i++)
 		{
-			break;
-		}
-
-		if(inBuf[i] <= 0x7A || inBuf[i] == 0x7C) // cannot print every char..
-		{
-			*outPtr = inBuf[i];
-		}
-		else
-		{
-			if((inBuf[i] & 0xE0) == 0xC0 && (i+1)<inBufLen) /* 2 byte char */
+			if(msg1->data[i] != msg2->data[i])
 			{
-				cUtf = (inBuf[i] << 8) + inBuf[i+1];
-
-				/* Just go through BP characters as they are not many */
-				switch(cUtf)
-				{
-					case 0xC2A1:
-						*outPtr = 0x1A;	/* ¡ */
-						break;
-
-					case 0xC2A7:
-						*outPtr = 0x1B;	/* § */
-						break;
-
-					case 0xC2Bf:
-						*outPtr = 0x7F;	/* ¿ */
-						break;
-
-					case 0xC384:
-						*outPtr = 0x08;	/* Ä */
-						break;
-
-					case 0xC386:
-						*outPtr = 0x0A;	/* Æ */
-						break;
-
-					case 0xC38B:
-						*outPtr = 0x09;	/* Ë */
-						break;
-
-					case 0xC391:
-						*outPtr = 0x0B;	/* Ñ */
-						break;
-
-					case 0xC396:
-						*outPtr = 0x0C;	/* Ö */
-						break;
-
-					case 0xC398:
-						*outPtr = 0x0D;	/* Ø */
-						break;
-
-					case 0xC39C:
-						*outPtr = 0x0F;	/* Ü */
-						break;
-
-					case 0xC39F:
-						*outPtr = 0x7B;	/* ß */
-						break;
-
-					case 0xC3A4:
-						*outPtr = 0x11;	/* ä */
-						break;
-
-					case 0xC3A6:
-						*outPtr = 0x13;	/* æ */
-						break;
-
-					case 0xC3AB:
-						*outPtr = 0x12;	/* ë */
-						break;
-
-					case 0xC3B1:
-						*outPtr = 0x14;	/* ñ */
-						break;
-
-					case 0xC3B6:
-						*outPtr = 0x15;	/* ö */
-						break;
-
-					case 0xC3B8:
-						*outPtr = 0x16;	/* ø */
-						break;
-
-					case 0xC3BC:
-						*outPtr = 0x18;	/* ü */
-						break;
-
-					case 0xC592:
-						*outPtr = 0x0E;	/* Œ */
-						break;
-
-					case 0xC593:
-						*outPtr = 0x17;	/* œ */
-						break;
-
-					case 0xCB84:
-						*outPtr = 0x7E;	/* ˄ */
-						break;
-
-					case 0xCB85:
-						*outPtr = 0x7D;	/* ˅ */
-						break;
-
-					default:
-						*outPtr = '?';
-						break;
-
-						//TODO:     usw... sind noch nicht alle aus der Liste drin...
-
-				}
-
-                i++; // jump over next byte
-			}
-			else if((inBuf[i] & 0xF0) == 0xE0 && (i+2)<inBufLen) /* 3 byte char */
-            {
-				cUtf = (inBuf[i] << 16) + (inBuf[i+1] << 8) + inBuf[i+2];
-
-				switch(cUtf) // TODO ungetestet -> funktioniert nicht, wenn ein Mehrbyteding am Ende Steht!!!!!
-				// Ideen: Klappt das mit dem Ptr am Ende? / Ptr sollte gehen.. Das "?" geht ja auch / Ist der auch als 2byte Char problembehaftet?
-				// wie sieht der Outptr in Zeile 587 aus, wenn man am Ende so einen Mehrbyte hat und wenn nicht?
-				// vllt. WaitMS?? -> Tabelle
-				{
-					case 0xE28690:
-						*outPtr = 0x1E;	/* ← */
-						break;
-
-					case 0xE28691:
-						*outPtr = 0x1D;	/* ↑ */
-						break;
-
-					case 0xE28692:
-						*outPtr = 0x1C;	/* → */
-						break;
-
-					case 0xE28693:
-						*outPtr = 0x1F;	/* ↓ */
-						break;
-
-					case 0xE2AE9D: // NOTE: Doppelt von oben
-						*outPtr = 0x7E;	/* ⮝ */
-						break;
-
-					case 0xE2AE9F: // NOTE: Doppelt von oben
-						*outPtr = 0x7D;	/* ⮟ */
-						break;
-
-					default:
-						*outPtr = '?';
-						break;
-				}
-
-				//*outPtr = '?';
-
-                i=i+2; // jump 2 bytes
-            }
-            else if((inBuf[i] & 0xF8) == 0xF0) /* 4 byte char */
-            {
-                *outPtr = '?';
-
-                i+=3;
-            }
-			else
-			{
-				// No multibyte and not known...
-				*outPtr = '?';
+				return MSG_ERR_TRANSMISSION; // Return that there seems to be something wrong with the transmission
 			}
 		}
 
-		outPtr++;
-        if(--outBufLen == 0)
-        {
-            //*outPtr = 0;
-            //return;
-            break;
-        }
+		return MSG_ERR_NONE;
 	}
-	*outPtr = 0; // Terminate C string
+	return MSG_ERR_TRANSMISSION;
+}
+
+bp_msg_en findMessage(bp_msg_dt * message)
+{
+	uint8_t found = 0;
+
+	for(bp_msg_en i=1; i<BP_MSG_SIZE; i++) // start with 1, 0 is "unknown message"
+	{
+		if(message->address == bpMessages[i].address)
+		{
+			if(message->command == bpMessages[i].command)
+			{
+				found = 1;
+				// TODO: should just jump over if datalen <1 or not mentioned -> Testen
+				for(uint8_t j=0; j<message->dataLen; j++) // if dataLen is mentioned and we need to compare data
+				{
+					if(message->data[j] != bpMessages[i].data[j])
+					{
+						//return BP_MSG_UNKNOWN;
+						found = 0;
+						break;
+					}
+					else
+					{
+						found = 1;
+					}
+				}
+				if(found == 1)
+				{
+					return i;
+				}
+			}
+		}
+	}
+
+	return BP_MSG_UNKNOWN;
+}
+
+
+/* Create a custom message (mostly for unknown msgs) */
+bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, uint8_t * data, uint32_t waitMs)
+{
+	bp_msg_dt msg;
+
+	msg.address = address;
+	msg.dataLen = dataLen;
+	msg.command = command;
+	memcpy(msg.data, data, dataLen);
+
+	msg.timeStamp_ms = HAL_GetTick();
+	msg.waitAfter_ms = waitMs;
+	msg.messageState = MSG_COMPLETE;
+
+	return msg;
+}
+
+bp_msg_dt buildTextMessage(char * text, uint32_t waitMs) // TODO: zunächst nur einfache Texte, die den Bildschirm 1x füllen
+{
+	uint8_t textLen = 0;
+	char outbuf[25];
+
+	utf2bp(text, strlen(text), outbuf, sizeof(outbuf));
+
+	textLen = strlen(outbuf);
+	if(textLen > 8)
+	{
+		textLen = 8;
+		// TODO ausrichten (zentrieren, links, ..) und so...
+		// später: Texte mit > 8 Zeichen nacheinander ausgeben? Je nach Status, ob wir active sind? Buffer bauen und der reihe nach ausgeben?
+
+	}
+
+	//return buildMessage(bpMessages[BP_MSG_TEXT].address, textLen, bpMessages[BP_MSG_TEXT].command, text, waitMs);
+	return buildMessage(bpMessages[BP_MSG_TEXT].address, textLen, bpMessages[BP_MSG_TEXT].command, outbuf, waitMs);
 }

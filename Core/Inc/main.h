@@ -72,6 +72,18 @@ void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
 
+// TODO auf Dauer woanders hin
+enum bp_DAB_active_en{
+	bp_DAB_inactive = 0,
+	bp_DAB_active
+};
+
+typedef struct {
+	enum bp_DAB_active_en bpDabActive;
+}state_flags_t;
+
+state_flags_t stateFlags;
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

@@ -200,7 +200,8 @@ int main(void)
 
   /* USER CODE END 2 */
 
-  //uint8_t countTest = 0;
+  // start inactive DAB mode
+  stateFlags.bpDabActive = bp_DAB_inactive;
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */

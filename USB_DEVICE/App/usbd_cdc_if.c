@@ -278,7 +278,7 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 		if(Buf[i] == ' ') // Tabulator 0x09 kann putty über CopyPaste nicht
 		{
 			msg++;
-			HAL_GPIO_TogglePin(LED_ORANGE_Port, LED_ORANGE_Pin);
+			//HAL_GPIO_TogglePin(LED_ORANGE_Port, LED_ORANGE_Pin);
 		}
 		else if(Buf[i] == '\r')
 		{
