@@ -17,7 +17,7 @@ bp_msg_state_dt bpMsgState;
 bp_msg_state_dt bpMsgState_DAB; /* For debugging and listening between DAB and radio */
 #endif
 
-extern const bp_msg_dt bpMessages[];
+extern const bp_msg_dt bpMessages[]; // TODO noch auslagern?
 
 void bpCommInit(void)
 {
@@ -39,6 +39,17 @@ void bpCommInit(void)
 #ifdef DAB_DEBUG_ACTIVE
 	HAL_UART_Receive_IT(&huart3, (uint8_t*) bpMsgState.uart.rx_data_debug, 1);
 #endif
+
+	bpDisplayInit();
+}
+
+/* Set so SEND_WAIT state unless a message is already being sent, in this case the message would be taken from stack */
+void setSendWait(void)
+{
+	if(bpCommState != BP_SEND)
+	{
+		bpCommState = BP_SEND_WAIT;
+	}
 }
 
 void bpCommTasks(void)
@@ -50,7 +61,7 @@ void bpCommTasks(void)
 			(HAL_GetTick()-bpMsgState.curReadMsg.timeStamp_ms) > 2500) //TODO: generischen Timeout festlegen
 	{
 		printf("E: Timeout while receiving message!\r\n");
-		bpMsgState.curReadMsg.messageState = MSG_FAIL;
+		bpMsgState.curReadMsg.messageState = MSG_TIMEOUT;
 	}
 
 	switch(bpCommState)
@@ -141,6 +152,7 @@ void bpCommTasks(void)
 				/* Go to sendig state if there is no further waiting nec. */
 				if(sendRingMessage(&bpMsgState, RINGBUF_KEEP_ITEM) == RINGBUF_OK)
 				{
+					// TODO: hier müsste Timeouthandling engebaut werden. Er würde sonst ggf. Jahre auf eine Antwort warten...
 					bpCommState = BP_SEND;
 				}
 				else
@@ -152,15 +164,23 @@ void bpCommTasks(void)
 
 		case BP_SEND:
 
+			/* Resend if timeout */
+			if(bpMsgState.curReadMsg.messageState == MSG_TIMEOUT)
+			{
+				bpCommState = BP_SEND_WAIT;
+
+				printf("E: Message timeout while sending. Back to BP_SEND_WAIT\r\n");
+
+				// TEST: raus werfen
+				//ringNextReadInd(bpMsgState.writeBuf);
+
+				// TODO abbrechen, wenn das mehrmals schief geht?
+				// oder den Senderingbuffer weg werfen?
+			}
+
 			/* First message sent in state before, wait for response from radio. Check if the answers match */
 			if(ringGet(bpMsgState.readBuf, &msg, RINGBUF_NEXT_ITEM) == RINGBUF_OK)
 			{
-				/* Cancel if something went wrong */
-				if(msg.messageState == MSG_FAIL)
-				{
-					bpCommState = BP_IDLE;
-				}
-
 				/* Is this message a response to our/a message? */
 				if(msg.messageState == MSG_COMPLETE_RESPONSE) // TODO: Wenn der direkt antwortet, ist das keine Response...
 				{
@@ -216,8 +236,8 @@ void bpCommTasks(void)
 				}
 				else
 				{
-					printf("Message not a response (Rec: %X %X %X). Pushing it back...\r\n",
-									msg.address, msg.dataLen, msg.command);
+					printf("Message not a response (Rec: %X %X %X). Pushing it back... Messages on write-ring: %d\r\n",
+									msg.address, msg.dataLen, msg.command, ringCurrentSize(bpMsgState.writeBuf));
 
 					/* Put the message back on the ring, we are expecting an answer; will go out here as soon as send ring is empty */
 					ringAdd(bpMsgState.readBuf, msg);
@@ -236,6 +256,8 @@ void bpCommTasks(void)
 			}
 			break;
 	}
+
+	bpDisplayTasks();
 }
 
 /**
@@ -272,8 +294,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 	HAL_GPIO_TogglePin(LED_BLUE_Port, LED_BLUE_Pin);
 
-	/* Restart if there was a failure in a previous message */
-	if(currState->curReadMsg.messageState == MSG_FAIL)
+	/* Restart if there was a timeout in a previous message */
+	if(currState->curReadMsg.messageState == MSG_TIMEOUT)
 	{
 		currState->direction = MSG_DIRECTION_RECEIVE;
 		currState->receivePosition = MSG_ADDRESS;
@@ -409,7 +431,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 
 	bp_msg_dt msg;
 
-	uint8_t buf[8] = {0,};
+	uint8_t buf[9] = {0,};
 	uint8_t buf2[2] = {0,};
 //	uint8_t cnt = 0x01;
 
@@ -445,8 +467,9 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				//data[0] = 0x01;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x175, 1, 0x30, data, 65));
 
-				data[0] = 0x42;
-				ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 85));
+				//data[0] = 0x42;
+				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 85));
+				// -> wenn man DAB verlässt, macht er AUX, wenn das hier aktiviert ist ?!? Irgendwelche Botschaften unten noch relevant
 
 				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_STATION_NOT_FOUND]);
 
@@ -483,12 +506,12 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
 
 				//msg = buildTextMessage("Simu v03", 1);
-				msg = buildTextMessage("Plüm2000", 10);
+				msg = buildTextMessage("Plüm2000_etwasLänger!", BP_DISPLAY_TIMEOUT_DEFAULT); // TODO aus Standardnachricht raus holen
 				ringAdd(bpMsgState.writeBuf, msg);
 
 				//uswusw...
-				msg = buildTextMessage("Yo → ß⮟→", 10);
-				ringAdd(bpMsgState.writeBuf, msg);
+				//msg = buildTextMessage("Yo → ß⮟→", 10);
+				//ringAdd(bpMsgState.writeBuf, msg);
 
 				//data[0] = 0x42;
 				//ringAdd(bpMsgState.writeBuf, buildMessage(0x170, 1, 0x0B, data, 65));
@@ -508,7 +531,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				printf("Deactivating DAB mode\r\n");
 			}
 
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_6:
@@ -516,7 +539,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			buf[1] = 0xFF;
 			msg = buildMessage(0x175, 2, 0x77, buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_5:
@@ -524,7 +547,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			buf[1] = 0xFF;
 			msg = buildMessage(0x175, 2, 0x77, buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_4:
@@ -543,9 +566,9 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			ringAdd(bpMsgState.writeBuf, msg);
 
 			sprintf(buf,"0x%02X", buf2[0]);
-			msg = buildTextMessage(buf, 20);
+			msg = buildTextMessage(buf, BP_DISPLAY_TIMEOUT_DEFAULT);
 			ringAdd(bpMsgState.writeBuf, msg);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_2:
@@ -557,42 +580,52 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				{
 					buf[j]=cnt++;
 				}
-				msg = buildTextMessage(buf, 100);
+				msg = buildTextMessage(buf, BP_DISPLAY_TIMEOUT_DEFAULT);
 				ringAdd(bpMsgState.writeBuf, msg);
 			}
 
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_DOWN:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_DOWN]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
+
+			controlBpMenu(MENU_CONTROL_DOWN);
 			break;
 
 		case BP_MSG_BUT_UP:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_UP]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
+
+			controlBpMenu(MENU_CONTROL_UP);
 			break;
 
 		case BP_MSG_BUT_LEFT:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_LEFT]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
+
+			controlBpMenu(MENU_CONTROL_LEFT);
 			break;
 
 		case BP_MSG_BUT_RIGHT:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_RIGHT]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
+
+			controlBpMenu(MENU_CONTROL_RIGHT);
 			break;
 
 
-		//case BP_MSG_BUT_DSC:
+		case BP_MSG_BUT_DSC:
+			setBpMenu(MENU_DSC); // TODO rückgabewert abfragen
+			break;
 		//case BP_MSG_BUT_LD:
 		//	break;
 		case BP_MSG_BUT_AUD:
 			printf("AUD gedrückt... \r\n");
 
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_AUD]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_RELEASED_17C:
@@ -601,7 +634,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 		case BP_MSG_BUT_RELEASED_17D:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_SCA:
@@ -611,10 +644,10 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			msg = buildMessage(0x175, 2, 0x56, buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 			sprintf(buf, "N %X", cnt);
-			msg = buildTextMessage(buf, 10);
+			msg = buildTextMessage(buf, BP_DISPLAY_TIMEOUT_DEFAULT);
 			ringAdd(bpMsgState.writeBuf, msg);
 			cnt = cnt*2;
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_PS:
@@ -622,12 +655,12 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			buf[1] = 0xFF;
 			msg = buildMessage(0x175, 2, 0x57, buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 		case BP_MSG_BUT_MIX:
 		case BP_MSG_BUT_GEO:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_GEO]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_TA:
@@ -640,35 +673,67 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_BUT_dB:
+			// TODO VOL-Menü?
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_dB]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_VOL_MIN:
+			setBpMenu(MENU_VOL); // TODO rückgabewert abfragen
+
 			printf("\033[1;33mVOL- gedrückt...\033[0m\r\n");
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_VOL_MIN]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_BUT_VOL_PLUS:
+			setBpMenu(MENU_VOL); // TODO rückgabewert abfragen
 			printf("\033[1;33mVOL+ gedrückt...\033[0m\r\n");
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_VOL_PLUS]);
-			bpCommState = BP_SEND_WAIT;
+			setSendWait();
 			break;
 
 		case BP_MSG_LEAVE_VOL:
+			setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
 			printf("\033[1;33mVerlasse VOL-Menü\033[0m\r\n");
-			msg = buildTextMessage("VOL verl.", 10);
-			ringAdd(bpMsgState.writeBuf, msg);
-			bpCommState = BP_SEND_WAIT;
+			//msg = buildTextMessage("VOL verl.", 10);
+			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE));
+			setSendWait();
+			break;
+
+		case BP_MSG_ENTER_GEO_MIX:
+			setBpMenu(MENU_GEO_MIX); // TODO rückgabewert abfragen
+			printf("\033[1;33mGehe in GEO- oder MIX-Menü\033[0m\r\n");
+			break;
+
+		case BP_MSG_LEAVE_GEO_MIX:
+			setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
+			printf("\033[1;33mVerlasse GEO- oder MIX-Menü\033[0m\r\n");
+
+			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE));
+			setSendWait();
 			break;
 
 		case BP_MSG_ENTER_AUD:
+			setBpMenu(MENU_AUD); // TODO rückgabewert abfragen
 			printf("\033[1;33mGehe in AUD-Menü\033[0m\r\n");
 			break;
 
 		case BP_MSG_LEAVE_AUD:
+			setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
 			printf("\033[1;33mVerlasse AUD-Menü\033[0m\r\n");
+			break;
+
+		case BP_MSG_ENTER_FAD:
+			setBpMenu(MENU_FAD); // TODO rückgabewert abfragen
+			printf("\033[1;33mGehe in FAD-Menü\033[0m\r\n");
+			break;
+
+		case BP_MSG_LEAVE_FAD:
+			setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
+			printf("\033[1;33mVerlasse FAD-Menü\033[0m\r\n");
+			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE));
+			setSendWait();
 			break;
 
 		case BP_MSG_LEAVE_MUTE:
@@ -684,6 +749,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 	return retVal;
 }
 
+// TODO: Also wie folgt: Der Eintragstext wird gezegt, der jeweilige Menüwert kommt aus der ptr-Funktion
 
 /* Send a ring message, if available */
 ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en nextItem)
@@ -704,12 +770,6 @@ ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en ne
 	{
 		return RINGBUF_NO_DATA;
 	}
-
-	//if(HAL_GetTick() < bpMsgState.msgReceivedTime + msg.waitAfter_ms) // minus mininimale-ZEit?
-	//{
-	//	return RINGBUF_WAIT;
-	//}
-
 
 	if(ringbufStatus == RINGBUF_OK)
 	{
@@ -732,8 +792,13 @@ ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en ne
 
 		//bpMsgState.checkMsg = msg; // TODO: Nachricht, die zum prüfen genommen wird
 
-		HAL_UART_Transmit_IT(&huart2, (uint8_t *)&bpMsgState.uart.tx_data[bpMsgState.uart.tx_data_pos], 1); // TODO: Anfragen, ob der jetzt überhaupt senden darf!!!!
+		HAL_UART_Transmit_IT(&huart2, (uint8_t *)&bpMsgState.uart.tx_data[bpMsgState.uart.tx_data_pos], 1);
+		// TODO: Anfragen, ob der jetzt überhaupt senden darf!!!!
 		bpMsgState.uart.tx_data_pos++;
+
+		/* Initiate the current read message as incomplete (timeout starts) */
+		bpMsgState.curReadMsg.messageState = MSG_INCOMPLETE;
+		bpMsgState.curReadMsg.timeStamp_ms = HAL_GetTick();
 
 		/* Switch to next item if wanted */
 		if(nextItem == RINGBUF_NEXT_ITEM)

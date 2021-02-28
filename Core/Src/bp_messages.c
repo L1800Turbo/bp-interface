@@ -40,8 +40,12 @@ const bp_msg_dt bpMessages[BP_MSG_SIZE] = {
 		{.address = 0x17D, .command = 0x61}, /* BP_MSG_BUT_VOL_PLUS */
 
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x39}}, /* BP_MSG_LEAVE_VOL  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x01, 0x3A}}, /* BP_MSG_ENTER_GEO_MIX  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3A}}, /* BP_MSG_LEAVE_GEO_MIX  */
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x01, 0x3B}}, /* BP_MSG_ENTER_AUD  */
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3B}}, /* BP_MSG_LEAVE_AUD  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x01, 0x3C}}, /* BP_MSG_ENTER_FAD (inside GEO menu)  */
+		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3C}}, /* BP_MSG_LEAVE_FAD (inside GEO menu)  */
 		{.address = 0x178, .command = 0x14, .dataLen = 2, .data = {0x80, 0x3F}}, /* BP_MSG_LEAVE_MUTE */
 
 		/* Messages to be sent */
@@ -143,24 +147,4 @@ bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, uint8
 	msg.messageState = MSG_COMPLETE;
 
 	return msg;
-}
-
-bp_msg_dt buildTextMessage(char * text, uint32_t waitMs) // TODO: zunächst nur einfache Texte, die den Bildschirm 1x füllen
-{
-	uint8_t textLen = 0;
-	char outbuf[25];
-
-	utf2bp(text, strlen(text), outbuf, sizeof(outbuf));
-
-	textLen = strlen(outbuf);
-	if(textLen > 8)
-	{
-		textLen = 8;
-		// TODO ausrichten (zentrieren, links, ..) und so...
-		// später: Texte mit > 8 Zeichen nacheinander ausgeben? Je nach Status, ob wir active sind? Buffer bauen und der reihe nach ausgeben?
-
-	}
-
-	//return buildMessage(bpMessages[BP_MSG_TEXT].address, textLen, bpMessages[BP_MSG_TEXT].command, text, waitMs);
-	return buildMessage(bpMessages[BP_MSG_TEXT].address, textLen, bpMessages[BP_MSG_TEXT].command, outbuf, waitMs);
 }

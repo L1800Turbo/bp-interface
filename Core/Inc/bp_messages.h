@@ -27,7 +27,7 @@ enum bp_msg_state_en {
 	MSG_INCOMPLETE,
 	MSG_COMPLETE,
 	MSG_COMPLETE_RESPONSE, /* This message is flagged as a response to our message */
-	MSG_FAIL
+	MSG_TIMEOUT
 };
 
 typedef enum {
@@ -76,8 +76,12 @@ typedef enum {
 	BP_MSG_BUT_VOL_PLUS,
 
 	BP_MSG_LEAVE_VOL,
+	BP_MSG_ENTER_GEO_MIX,
+	BP_MSG_LEAVE_GEO_MIX,
 	BP_MSG_ENTER_AUD,
 	BP_MSG_LEAVE_AUD,
+	BP_MSG_ENTER_FAD,
+	BP_MSG_LEAVE_FAD,
 	BP_MSG_LEAVE_MUTE,
 
 	/* Messages to be sent */
@@ -200,7 +204,6 @@ bp_msg_error compareMessages(bp_msg_dt * msg1, bp_msg_dt * msg2);
 bp_msg_en findMessage(bp_msg_dt * message);
 
 bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, uint8_t * data, uint32_t waitMs);
-bp_msg_dt buildTextMessage(char * text, uint32_t waitMs);
 
 // in bp_charset.c
 void utf2bp(const char * inBuf, uint8_t inBufLen, char * outBuf, uint8_t outBufLen);

@@ -20,6 +20,18 @@ void ringClear(ringbuf_dt * buf)
 	buf->readInd  = 0;
 }
 
+uint8_t ringCurrentSize(ringbuf_dt * buf)
+{
+	if(buf->writeInd >= buf->readInd)
+	{
+		return buf->writeInd - buf->readInd;
+	}
+	else
+	{
+		return buf->bufSize - buf->writeInd  - buf->readInd; // TODO völlig ungetestet!!!
+	}
+}
+
 void ringNextWriteInd(ringbuf_dt * buf)
 {
 	buf->writeInd = (buf->writeInd+1) % (buf->bufSize /*+ 1*/);

@@ -202,6 +202,7 @@ int main(void)
 
   // start inactive DAB mode
   stateFlags.bpDabActive = bp_DAB_inactive;
+  strcpy(stateFlags.currentDisplayMessage, "DAB-Sim");
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */

@@ -80,6 +80,7 @@ enum bp_DAB_active_en{
 
 typedef struct {
 	enum bp_DAB_active_en bpDabActive;
+	char currentDisplayMessage[100]; // TODO Länge sinnvoll festlegen
 }state_flags_t;
 
 state_flags_t stateFlags;

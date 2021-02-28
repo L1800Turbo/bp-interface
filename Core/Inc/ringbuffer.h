@@ -33,6 +33,7 @@ typedef struct {
 } ringbuf_dt;
 
 ringbuf_dt * ringInit(uint8_t size);
+uint8_t ringCurrentSize(ringbuf_dt * buf);
 
 void ringClear(ringbuf_dt * buf);
 

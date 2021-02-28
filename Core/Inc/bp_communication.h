@@ -9,6 +9,7 @@
 #define INC_BP_COMMUNICATION_H_
 
 /* Includes ------------------------------------------------------------------*/
+#include <bp_display.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -17,19 +18,14 @@
 #include "main.h"
 #include "ringbuffer.h"
 
-enum bp_comm_state {
-
+enum bp_comm_state
+{
   BP_UNINITIALIZED = 0,
   BP_INIT_4800,		/* Initialization after turning on radio with 4800 Baud       */
   BP_INIT_9600,		/* Second initialization step after turning on with 9600 Baud */
   BP_IDLE,			/* Idle state after initialization, DAB not active            */
-  //BP_ACTIVATE,		/* Send initial parameters after activation by radio          */
   BP_SEND_WAIT,
   BP_SEND
-  //BP_RUNNING,
-  //BP_SEARCH_PROGRAM, // oder so ähnlich...
-  //BP_MENU,
-  //BP_DEACTIVATE
 };
 
 enum bp_msg_rcv_pos {
@@ -85,11 +81,11 @@ typedef struct {
 	//uint8_t processMessagePos;				/* The current position in the buffer to work on */
 }bp_msg_state_dt;
 
-
-
 void bpCommInit(void);
 void bpCommTasks(void);
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
+
+void setSendWait(void);
 
 bp_msg_error processBpMsg(bp_msg_dt * message);
 ringbuf_status_en sendRingMessage(bp_msg_state_dt * msgState, ringbuf_next_en nextItem);
