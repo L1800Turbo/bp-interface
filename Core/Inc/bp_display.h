@@ -31,14 +31,10 @@ typedef enum {
 }bp_menu_control_en;
 
 typedef enum {
-	MENU_NONE = 0,
+	MENU_NONE = 0, // TODO gefählrich... muss noch weg?
 
 	MENU_DSC,
-
-	MENU_VOL,
-	MENU_GEO_MIX,
-	MENU_AUD,
-	MENU_FAD
+	BP_MENU_SIZE,
 }bp_menu_en;
 
 // Menüeintrag allgemein
@@ -62,10 +58,10 @@ typedef struct{
 	DSC_MENU_SIZE
 };*/
 
-enum menu_active_value {
+/*enum menu_active_value {
 	MENU_SHOW_NAME = 0, // we show the current menu name
 	MENU_SHOW_VALUE
-};
+};*/
 
 /*typedef struct {
 	char* name;
@@ -93,7 +89,7 @@ typedef struct {
 	//menutimeout
 	//const menu_dt *menuDsc; // TODO: muss noch zugeordnet werden...
 	//enum menu_dsc_en currentDscEntry;
-	enum menu_active_value menuActiveValue;
+	//enum menu_active_value menuActiveValue;
 
 }bp_display_state_dt;
 

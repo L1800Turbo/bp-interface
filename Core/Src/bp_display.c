@@ -42,7 +42,22 @@ uint8_t dscDummyVal = 0;
 
 char* dscDummyShow(char * name)
 {
-	return "Test.."; // Todo hier den DUmmywert einbauzen...
+	strcpy(bpDisplayState.currentText, "        ");
+	uint8_t position = 6; // Stelle, wo die Zahl beginnt
+
+	// erste Zeichen kopieren
+	for(uint8_t i=0; i<5; i++)
+	{
+		bpDisplayState.currentText[i] = name[i];
+	}
+
+	if(dscDummyVal < 10)
+	{
+		position++;
+	}
+	itoa(dscDummyVal, &bpDisplayState.currentText[position], 10);
+
+	return bpDisplayState.currentText;
 }
 
 void dscDummyControl(bp_menu_control_en control)
@@ -63,9 +78,10 @@ static const menu_entry_dt menuDsc[] = {
 		{.name = "Dummy",   .getValue = dscDummyShow,   .controlEntry = dscDummyControl}
 };
 
-static const menu_dt menus[] = { // vom enum bp_menu_en
+static menu_dt menus[] = { // vom enum bp_menu_en
 		{0,0},
 		{.menuArr = menuDsc, .menuSize = 2},
+	//	{.menuArr = menuVol, .menuSize = 1}
 };
 
 /*static const menu_entry_dt *menus[] = { // vom enum bp_menu_en
@@ -79,7 +95,7 @@ void bpDisplayInit(void)
 	bpDisplayState.timeoutWaitMs = BP_DISABLE;
 	bpDisplayState.displayUpdateTime = 400;
 
-	bpDisplayState.menuSwitchValueWaitMs = 900;
+	//bpDisplayState.menuSwitchValueWaitMs = 900;
 
 	//bpDisplayState.menuDsc = &menuDsc; // TODO: in Currentmenue öndern? Aber andere Menüs sollten ja niht mit DSC beendet werden können?
 
@@ -94,45 +110,34 @@ void bpDisplayTasks(void)
 		bp_msg_dt msg;
 
 		// Create Message with offset, which will shorten the message; add to ring
-		msg = buildTextMessage(bpDisplayState.currentText+2, 1000);
+		msg = buildTextMessage(bpDisplayState.currentText+2, bpDisplayState.timeoutWaitMs);
 		ringAdd(bpMsgState.writeBuf, msg);
 		setSendWait();
 	}
 
-	// TODO hier dann die Display/Menü-Aufgaben, das unten dann außerhalb von Menüs?
-	if(bpDisplayState.currentMenu != MENU_NONE) // TODO: ein != NULL? Das er hier allgemein hin kommt, wenn er ein Menü auf hat?
+	/*if(bpDisplayState.timeoutWaitMs != BP_DISABLE)
 	{
-		/* Switch between name and value (eg. Verson <-> n.nn) TODO: Das hier alles kann ja auch weg dann .... */
-		/*if(HAL_GetTick()-bpDisplayState.menuSwitchValueTimestamp > bpDisplayState.menuSwitchValueWaitMs)
-		{
-			char * currentValue;
-			bpDisplayState.menuSwitchValueTimestamp = HAL_GetTick();
+		printf("wait > 0\r\n");
+	}*/
 
-			if(bpDisplayState.menuActiveValue == MENU_SHOW_NAME)
-			{
-				currentValue = bpDisplayState.menuDsc->entries[bpDisplayState.currentDscEntry].name;
-				bpDisplayState.menuActiveValue = MENU_SHOW_VALUE;
-			}
-			else
-			{
-				currentValue = bpDisplayState.menuDsc->entries[bpDisplayState.currentDscEntry].controlEntry(MENU_CONTROL_NONE);
-				bpDisplayState.menuActiveValue = MENU_SHOW_NAME;
-			}
-			ringAdd(bpMsgState.writeBuf, buildTextMessage(currentValue, BP_DISABLE));
-			setSendWait();
-		}
-		*/
-	}
-	else // no or every other menu
+	/* If we want to go back to default value after some time */
+	if((bpDisplayState.timeoutWaitMs != BP_DISABLE) && ((HAL_GetTick()-bpDisplayState.timeoutTimestamp) > bpDisplayState.timeoutWaitMs))
 	{
-		/* If we want to go back to default value after some time */
-		if(bpDisplayState.timeoutWaitMs > BP_DISABLE && HAL_GetTick()-bpDisplayState.timeoutTimestamp > bpDisplayState.timeoutWaitMs)
+		char * currentValue;
+
+		bpDisplayState.timeoutWaitMs = BP_DISABLE;
+
+		if(bpDisplayState.currentMenu == MENU_NONE)
 		{
-			bpDisplayState.timeoutWaitMs = BP_DISABLE;
-			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE));
-			// TODO: hier dann einfügen, dass der Menütext angezeigt wird, das ganze If oben kann dann weg
-			setSendWait();
+			currentValue = stateFlags.currentDisplayMessage;
 		}
+		else // Go back to current menu value if in menu
+		{
+			currentValue = menus[bpDisplayState.currentMenu].menuArr[bpDisplayState.currentMenuIndex]
+											.getValue(menus[bpDisplayState.currentMenu].menuArr[bpDisplayState.currentMenuIndex].name);
+		}
+		ringAdd(bpMsgState.writeBuf, buildTextMessage(currentValue, BP_DISABLE));
+		setSendWait();
 	}
 }
 
@@ -164,7 +169,7 @@ bp_msg_dt buildTextMessage(char * text, uint32_t displayWaitMs)
 	}
 
 	/* Timestamp to go back to default view, if wanted */
-	if(displayWaitMs > BP_DISABLE)
+	if(displayWaitMs != BP_DISABLE)
 	{
 		bpDisplayState.timeoutWaitMs = displayWaitMs;
 		bpDisplayState.timeoutTimestamp = HAL_GetTick();
@@ -180,8 +185,14 @@ bp_msg_dt buildTextMessage(char * text, uint32_t displayWaitMs)
 /* Change menu if possible */
 bp_menu_state_dt setBpMenu(bp_menu_en menu)
 {
+	if(menu == MENU_NONE) // TODO: Leave silent...
+	{
+		bpDisplayState.currentMenu = MENU_NONE;
+		//ringAdd(bpMsgState.writeBuf, buildTextMessage("bla", 200));
+		//setSendWait();
+	}
 	/* Leave menu if current menu is already active */
-	if(bpDisplayState.currentMenu == menu)
+	else if(bpDisplayState.currentMenu == menu) // TODO: wenn z.B. ein zweites Mal was mt VOL kommt, oder FAD... kommt er dann hier hin?!
 	{
 		printf("\033[1;36mMenü aus\033[0m\r\n");
 
@@ -190,12 +201,13 @@ bp_menu_state_dt setBpMenu(bp_menu_en menu)
 		ringAdd(bpMsgState.writeBuf, buildTextMessage("Exit", 200));
 		setSendWait();
 	}
-	else
+	else if(menu < BP_MENU_SIZE)
 	{
 		char * currentValue;
 		menu_entry_dt * cMenu = menus[menu].menuArr; // TODO: gefährlich, wenn er eine 0 holt und an Adresse 0 springt!
 
-		printf("\033[1;36mMenü auf: %d\033[0m\r\n", menu);
+
+		printf("\033[1;36mMenü auf: %d (%X)\033[0m\r\n", menu, &menu);
 
 		bpDisplayState.currentMenu = menu;
 		bpDisplayState.currentMenuIndex = 0;
@@ -206,6 +218,8 @@ bp_menu_state_dt setBpMenu(bp_menu_en menu)
 		ringAdd(bpMsgState.writeBuf, buildTextMessage(currentValue, BP_DISABLE));
 		setSendWait();
 	}
+
+	// TODO: unbekannte Menüs ignorieren
 
 	return MENU_STATE_OK;
 }

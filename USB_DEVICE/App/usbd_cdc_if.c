@@ -32,6 +32,8 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
+uint8_t msg = 0;
+uint16_t cdcData[20];
 
 /* USER CODE END PV */
 
@@ -259,14 +261,18 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
   * @param  Len: Number of data received (in bytes)
   * @retval Result of the operation: USBD_OK if all operations are OK else USBD_FAIL
   */
-
-//TODO temporär
-uint8_t msg = 0;
-uint16_t cdcData[20];
-
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
+	/*
+	 * Muss da oben drüber
+	 * //TODO temporär
+uint8_t msg = 0;
+uint16_t cdcData[20];
+
+	 *  */
+
+
 	extern bp_msg_state_dt bpMsgState;
 	extern enum bp_comm_state bpCommState;
 

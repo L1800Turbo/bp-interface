@@ -506,8 +506,8 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				//ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_REASED_17D]);
 
 				//msg = buildTextMessage("Simu v03", 1);
-				msg = buildTextMessage("Plüm2000_etwasLänger!", BP_DISPLAY_TIMEOUT_DEFAULT); // TODO aus Standardnachricht raus holen
-				ringAdd(bpMsgState.writeBuf, msg);
+				//msg = buildTextMessage("Plüm2000_etwasLänger!", BP_DISPLAY_TIMEOUT_DEFAULT); // TODO aus Standardnachricht raus holen
+				//ringAdd(bpMsgState.writeBuf, msg);
 
 				//uswusw...
 				//msg = buildTextMessage("Yo → ß⮟→", 10);
@@ -658,6 +658,10 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			setSendWait();
 			break;
 		case BP_MSG_BUT_MIX:
+			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_STATION_FOUND]);
+			setSendWait();
+			break;
+
 		case BP_MSG_BUT_GEO:
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_BUT_GEO]);
 			setSendWait();
@@ -679,7 +683,8 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_BUT_VOL_MIN:
-			setBpMenu(MENU_VOL); // TODO rückgabewert abfragen
+			//setBpMenu(MENU_VOL); // TODO rückgabewert abfragen
+			setBpMenu(MENU_NONE);
 
 			printf("\033[1;33mVOL- gedrückt...\033[0m\r\n");
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_VOL_MIN]);
@@ -687,22 +692,29 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_BUT_VOL_PLUS:
-			setBpMenu(MENU_VOL); // TODO rückgabewert abfragen
+			setBpMenu(MENU_NONE);
+			//setBpMenu(MENU_VOL); // TODO rückgabewert abfragen, nicht wnen DAB nicht aktiv ist!!
 			printf("\033[1;33mVOL+ gedrückt...\033[0m\r\n");
 			ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_VOL_PLUS]);
 			setSendWait();
 			break;
 
 		case BP_MSG_LEAVE_VOL:
-			setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
+			if(stateFlags.bpDabActive != bp_DAB_active) // TODO: müsste eigentlich bei allen..
+			{
+				break;
+			}
+			//setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
 			printf("\033[1;33mVerlasse VOL-Menü\033[0m\r\n");
 			//msg = buildTextMessage("VOL verl.", 10);
-			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE));
+			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE)); // TODO: wenn er in einem Menü ist, muss er was anderes!!
+			// oder einfach MENU none zu allen anderen...
 			setSendWait();
 			break;
 
 		case BP_MSG_ENTER_GEO_MIX:
-			setBpMenu(MENU_GEO_MIX); // TODO rückgabewert abfragen
+			//setBpMenu(MENU_GEO_MIX); // TODO rückgabewert abfragen
+			setBpMenu(MENU_NONE);
 			printf("\033[1;33mGehe in GEO- oder MIX-Menü\033[0m\r\n");
 			break;
 
@@ -715,7 +727,8 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_ENTER_AUD:
-			setBpMenu(MENU_AUD); // TODO rückgabewert abfragen
+			//setBpMenu(MENU_AUD); // TODO rückgabewert abfragen
+			setBpMenu(MENU_NONE);
 			printf("\033[1;33mGehe in AUD-Menü\033[0m\r\n");
 			break;
 
@@ -725,12 +738,13 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			break;
 
 		case BP_MSG_ENTER_FAD:
-			setBpMenu(MENU_FAD); // TODO rückgabewert abfragen
+			//setBpMenu(MENU_FAD); // TODO rückgabewert abfragen
+			setBpMenu(MENU_NONE);
 			printf("\033[1;33mGehe in FAD-Menü\033[0m\r\n");
 			break;
 
 		case BP_MSG_LEAVE_FAD:
-			setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
+			//setBpMenu(MENU_NONE); // TODO rückgabewert abfragen
 			printf("\033[1;33mVerlasse FAD-Menü\033[0m\r\n");
 			ringAdd(bpMsgState.writeBuf, buildTextMessage(stateFlags.currentDisplayMessage, BP_DISABLE));
 			setSendWait();

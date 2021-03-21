@@ -90,6 +90,13 @@ state_flags_t stateFlags;
 /* Private defines -----------------------------------------------------------*/
 #define CS_I2C_SPI_Pin GPIO_PIN_3
 #define CS_I2C_SPI_GPIO_Port GPIOE
+#define CS_SPI_SI46xx_Pin GPIO_PIN_4
+#define CS_SPI_SI46xx_GPIO_Port GPIOE
+#define Si46xx_RSTB_Pin GPIO_PIN_5
+#define Si46xx_RSTB_GPIO_Port GPIOE
+#define Si46xx_INTB_Pin GPIO_PIN_6
+#define Si46xx_INTB_GPIO_Port GPIOE
+#define Si46xx_INTB_EXTI_IRQn EXTI9_5_IRQn
 #define PC14_OSC32_IN_Pin GPIO_PIN_14
 #define PC14_OSC32_IN_GPIO_Port GPIOC
 #define PC15_OSC32_OUT_Pin GPIO_PIN_15
