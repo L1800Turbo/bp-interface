@@ -275,13 +275,17 @@ uint16_t cdcData[20];
 
 	extern bp_msg_state_dt bpMsgState;
 	extern enum bp_comm_state bpCommState;
+	extern void Si46xx_Send_Reset(void);
 
 	CDC_Transmit_FS(Buf, *Len);
 
 	for(uint32_t i=0; i<*Len; i++)
 	{
-
-		if(Buf[i] == ' ') // Tabulator 0x09 kann putty über CopyPaste nicht
+		if(Buf[i] == 's') // Startbyte für SPI-Geschichten
+		{
+			Si46xx_Send_Reset();
+		}
+		else if(Buf[i] == ' ') // Tabulator 0x09 kann putty über CopyPaste nicht
 		{
 			msg++;
 			//HAL_GPIO_TogglePin(LED_ORANGE_Port, LED_ORANGE_Pin);

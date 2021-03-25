@@ -125,7 +125,7 @@ int _write(int file, char *ptr, int len)
 	tmpLen = strlen(tmpBuffer);
 	
 	// wait until the buffer is free
-	while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0);
+	while(((USBD_CDC_HandleTypeDef*)(hUsbDeviceFS.pClassData))->TxState!=0); // Blockiert, wenn kein Putty dran
 
 	// copy the string into the buffer (with size limit)
 	if (len+tmpLen > sizeof(buffer))
@@ -190,19 +190,21 @@ int main(void)
 
   bpCommInit();
 
+  Si46xx_InitConfiguration(&hspi1);
+
   // start inactive DAB mode
   stateFlags.bpDabActive = bp_DAB_inactive;
   strcpy(stateFlags.currentDisplayMessage, "DAB-Sim");
 
   // TODO: Tests für Si46xx-Kommunikation  Si4684
-  HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET); // CS aus
+  /*HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET); // CS aus
   HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_RESET); // Reset LOW halten
 
   static uint8_t zeroes[10] = {0,};
-
+*/
   uint8_t dummy = 0x55;
   HAL_SPI_Transmit(&hspi1, (uint8_t*) &dummy, 1, 100); // Workaround: zu Beginn ist SCK HIGH, erst danach immer LOW...
-
+/*
   while(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 0);
   HAL_GPIO_WritePin(LED_ORANGE_Port, LED_ORANGE_Pin, GPIO_PIN_SET);
 
@@ -267,13 +269,13 @@ int main(void)
 	HAL_SPI_TransmitReceive(&hspi1, zeroes, recData, 6, 100);
 	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET);
 
-	printf("bla: %X, %X, %X, %X, %X\r\n", /* 0 ist der gesendete */
+	printf("bla: %X, %X, %X, %X, %X\r\n",
 			recData[1],
 			recData[2],
 			recData[3],
 			recData[4],
 			recData[5]
-		 );
+		 );*/
 
 
   /* USER CODE END 2 */
@@ -284,6 +286,8 @@ int main(void)
   {
 	  bpDebugPrint();
 	  bpCommTasks();
+
+	  Si46xx_Tasks();
 
 	  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1)
 	  {
@@ -481,7 +485,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : Si46xx_INTB_Pin */
   GPIO_InitStruct.Pin = Si46xx_INTB_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Si46xx_INTB_GPIO_Port, &GPIO_InitStruct);
 
@@ -565,13 +569,19 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(MEMS_INT2_GPIO_Port, &GPIO_InitStruct);
 
-  /* EXTI interrupt init*/
-  HAL_NVIC_SetPriority(EXTI9_5_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(EXTI9_5_IRQn);
-
 }
 
 /* USER CODE BEGIN 4 */
+
+
+
+// This is called when SPI receive is done
+/*void HAL_SPI_RxCpltCallback (SPI_HandleTypeDef * hspi)
+{
+  // Set CS pin to high and raise flag
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_6, GPIO_PIN_SET);
+  spi_recv_flag = 1;
+}*/
 
 /* USER CODE END 4 */
 
