@@ -36,8 +36,8 @@ struct Si46xx_Config Si46xxCfg;
 #define SI46XX_RST_WAIT_BEFORE 10 // ms
 #define SI46XX_RST_WAIT_AFTER   4 // 3.2ms
 
-
-
+#define SI46XX_CURRENT_WAIT_TIME (HAL_GetTick() - Si46xxCfg.timeoutVal)
+#define SI46XX_DEFAULT_SPI_WAIT 10 // ms, when looping and polling for an SPI ready state from uC or Si46xx
 
 /*void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
@@ -48,16 +48,17 @@ struct Si46xx_Config Si46xxCfg;
 	}
 }*/
 
+void Si46xx_Set_AnswerState(enum Si46xx_States current, enum Si46xx_States next, enum Si46xx_States after, uint16_t answerBytes);
+
 uint8_t spiBuffer[20];
 
 /**
  * Send command via SPI
  */
-Si46xx_Error Si46xx_SPIsend(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len)
+HAL_StatusTypeDef Si46xx_SPIsend(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len)
 {
 
 	// TODO Abfrage, ob sendebereit
-	// TODO Data ist doch nur gepointert, der übrschreibt das doch irgendwann?!?
 	memcpy(spiBuffer, data, len);
 
 
@@ -66,7 +67,7 @@ Si46xx_Error Si46xx_SPIsend(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t l
 	HAL_SPI_Transmit_IT(hspi, spiBuffer, len); //TODO: keine Pausen...
 	//SI46XX_CS_OFF(); -> Durch Interrupt...
 
-	return Si46xx_OK;
+	return HAL_OK;
 }
 
 void HAL_SPI_TxCpltCallback (SPI_HandleTypeDef * hspi)
@@ -80,7 +81,7 @@ void HAL_SPI_TxCpltCallback (SPI_HandleTypeDef * hspi)
 /**
  * Get status reply from last command
  */
-Si46xx_Error Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len)
+HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len)
 {
 	if(len < 4)
 	{
@@ -90,7 +91,7 @@ Si46xx_Error Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint1
 	uint8_t zeroes[1+len]; // {0, ??? TODO dynamisch mit memalloc oder sowas
 	memset(zeroes, 0, 1+len);
 
-	Si46xx_Error state = Si46xx_OK;
+	HAL_StatusTypeDef state = HAL_OK;
 	// TODO Abfrage, ob sendebereit
 
 	//HAL_SPI_STATE_BUSY_RX
@@ -104,7 +105,7 @@ Si46xx_Error Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint1
 	return state;
 }
 
-Si46xx_Error Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
+HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 {
 	SI46XX_CS_OFF();
 	SI46XX_RST_ON();
@@ -128,12 +129,12 @@ Si46xx_Error Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 
 	Si46xxCfg.state = Si46xx_STATE_SAFE_OFF; //Si46xx_STATE_STARTUP;
 
-	return Si46xx_OK;
+	return HAL_OK;
 }
 
-Si46xx_Error Si46xx_Send_PowerUp()
+HAL_StatusTypeDef Si46xx_Send_PowerUp(void)
 {
-	Si46xx_Error state = Si46xx_OK;
+	HAL_StatusTypeDef state = HAL_OK;
 	uint8_t data[16];
 
 	// Prepare data into SPI buffer
@@ -161,12 +162,45 @@ Si46xx_Error Si46xx_Send_PowerUp()
 	return state;
 }
 
+HAL_StatusTypeDef Si46xx_Send_LoadInit(void)
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_OK;
+
+	data[0] = SI46XX_LOAD_INIT;
+	data[1] = 0x00;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 16);
+
+	return state;
+}
+
 void Si46xx_Send_Reset(void)
 {
 	SI46XX_RST_ON();
 
 	Si46xxCfg.timeoutVal = HAL_GetTick();
 	Si46xxCfg.state = Si46xx_STATE_STARTUP;
+}
+
+void Si46xx_GetFW(uint8_t * buffer, uint32_t length)
+{
+	if(Si46xxCfg.firmwareBuf != NULL)
+	{
+		fwBufferWrite(Si46xxCfg.firmwareBuf, buffer, length);
+		Si46xxCfg.firmwareBuf->receiveTimestamp = HAL_GetTick(); // for timeout measurement
+	}
+}
+
+void Si46xx_Set_AnswerState(enum Si46xx_States current, enum Si46xx_States next, enum Si46xx_States after, uint16_t answerBytes)
+{
+	Si46xxCfg.answerBytes = answerBytes;
+
+	Si46xxCfg.stateBefore = current;
+	Si46xxCfg.state       = next;
+	Si46xxCfg.stateAfter  = after;
+
+	Si46xxCfg.timeoutVal = HAL_GetTick();
 }
 
 void progress_StatusBytes(uint8_t * data)
@@ -194,7 +228,7 @@ void Si46xx_Tasks()
 			break;
 
 		case Si46xx_STATE_STARTUP:
-			if(HAL_GetTick() - Si46xxCfg.timeoutVal > SI46XX_RST_WAIT_BEFORE /*&& HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1*/)
+			if(SI46XX_CURRENT_WAIT_TIME > SI46XX_RST_WAIT_BEFORE /*&& HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1*/)
 			{
 				printf("\033[1;36mSi46xx_Tasks: STARTUP\033[0m\r\n");
 
@@ -206,22 +240,16 @@ void Si46xx_Tasks()
 			break;
 
 		case Si46xx_STATE_INIT:
-			if((HAL_GetTick() - Si46xxCfg.timeoutVal) < SI46XX_RST_WAIT_AFTER)
+			if(SI46XX_CURRENT_WAIT_TIME < SI46XX_RST_WAIT_AFTER)
 			{
 				break;
 			}
 
 			printf("\033[1;36mSi46xx_Tasks: INIT\033[0m\r\n");
 
-			if(Si46xx_Send_PowerUp() == Si46xx_OK)
+			if(Si46xx_Send_PowerUp() == HAL_OK)
 			{
-				Si46xxCfg.answerBytes = 4;
-
-				Si46xxCfg.stateBefore = Si46xxCfg.state;
-				Si46xxCfg.state       = Si46xx_STATE_ANSWER;
-				Si46xxCfg.stateAfter  = Si46xx_STATE_LOAD_FIRMWARE;
-
-				Si46xxCfg.timeoutVal = HAL_GetTick(); // TODO temp
+				Si46xx_Set_AnswerState(Si46xxCfg.state, Si46xx_STATE_ANSWER, Si46xx_STATE_LOAD_INIT, 4);
 			}
 			else
 			{
@@ -232,7 +260,7 @@ void Si46xx_Tasks()
 		case Si46xx_STATE_ANSWER:
 			//if(Si46xxCfg.interruptFlag == Si46xx_INT_FLAG_SET)
 			//if(Si46xxCfg.intstate != SI46XX_INTB_STATE)
-			if(((HAL_GetTick() - Si46xxCfg.timeoutVal) > 10) && Si46xxCfg.hspi->State == HAL_SPI_STATE_READY) // TODO Temporätr
+			if((SI46XX_CURRENT_WAIT_TIME > 10) && Si46xxCfg.hspi->State == HAL_SPI_STATE_READY) // TODO Temporätr
 			{
 				uint8_t data[1 + Si46xxCfg.answerBytes]; // TODO: Geht das??
 				//uint8_t * data;
@@ -244,7 +272,7 @@ void Si46xx_Tasks()
 				//data = malloc(Si46xxCfg.answerBytes); // TODO: lässt malloc die auch selbst wieder los?
 				// free(data);
 
-				if(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, Si46xxCfg.answerBytes) == Si46xx_OK) // TODO ohne Else loopt er dann, wenn er busy ist
+				if(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, Si46xxCfg.answerBytes) == HAL_OK) // TODO ohne Else loopt er dann, wenn er busy ist
 				{
 					progress_StatusBytes(&data[1]);
 
@@ -277,17 +305,84 @@ void Si46xx_Tasks()
 
 
 						// TODO: Aber wenn andere Befehle ausgeführt werden?
-						// TODO: das PUP-Ding macht noch 0x0? Ist der nicht im BL?
 					}
 
 				}
 			}
 			break;
 
+		case Si46xx_STATE_LOAD_INIT: /* Prepare to load firmware */
+			if(SI46XX_CURRENT_WAIT_TIME < SI46XX_DEFAULT_SPI_WAIT)
+			{
+				break;
+			}
+
+			switch(Si46xx_Send_LoadInit())
+			{
+				case HAL_OK:
+					Si46xx_Set_AnswerState(Si46xxCfg.state, Si46xx_STATE_ANSWER, Si46xx_STATE_LOAD_FIRMWARE, 4);
+					break;
+
+				case HAL_BUSY:
+					Si46xxCfg.timeoutVal = HAL_GetTick();
+					break;
+
+				default: // Problems...
+					Si46xx_Send_Reset();
+					break;
+			}
+			break;
+
 		case Si46xx_STATE_LOAD_FIRMWARE:
-			//printf("\033[1;36mSi46xx_Tasks: LOAD_FIRMWARE\033[0m\r\n");
-			// TODO: warten, bis Interrupt kommt, aktuellen Status laden, dann FW schreiben
-			// Szenarien: Zunächst auf UART dann warten, später aus flash, gucken, ob Flash I.O.?
+			printf("\033[1;36mSi46xx_Tasks: LOAD_FIRMWARE: FW input needed...\033[0m\r\n");
+
+			Si46xxCfg.state = Si46xx_STATE_LOAD_FIRMWARE_WAIT;
+
+			Si46xxCfg.firmwareBuf = fwBufferInit(8192);
+
+			Si46xxCfg.timeoutVal = HAL_GetTick();
+
+			// Ringbuffer bauen, der alles empfängt vom USB
+			// SPI soll immer Senden, wenn das mit Faktor 4 im Buffer liegt
+			// Ringbuffer wieder kaputt machen, wenn fertig
+
+
+			// TODO Szenarien: Zunächst auf UART dann warten, später aus flash, gucken, ob Flash I.O.?
+			break;
+
+		case Si46xx_STATE_LOAD_FIRMWARE_WAIT:
+
+			if
+			(
+				(fwBufferCurrentSize(Si46xxCfg.firmwareBuf) >= (4096-4) ||
+				(HAL_GetTick() - Si46xxCfg.firmwareBuf->receiveTimestamp) > 10 ) && /* TODO Zeit definieren */
+				Si46xxCfg.hspi->State == HAL_SPI_STATE_READY
+			) // TODO: Timeout sinnvoll definieren -> der muss aber erstmal ne erste Aussage haben...
+			{
+				uint8_t data[4096] = {0,};
+				uint8_t i = 0;
+
+				data[0] = SI46XX_HOST_LOAD;
+				data[1] = 0x00;
+				data[2] = 0x00;
+				data[3] = 0x00;
+
+				for(i=4; i<sizeof(data); i++)
+				{
+					/* Get next byte or break if empty */
+					if(fwBufferGet(Si46xxCfg.firmwareBuf, &data[i]) == FWBUF_NO_DATA)
+					{
+						break;
+					}
+				}
+
+				SI46XX_CS_ON();
+				HAL_SPI_Transmit_IT(Si46xxCfg.hspi, data, i);
+				// CS_OFF by INT
+
+				//Si46xx_Set_AnswerState(Si46xxCfg.state, Si46xx_STATE_ANSWER, Si46xx_STATE_LOAD_FIRMWARE_WAIT, 4);
+				Si46xxCfg.state = Si46xx_STATE_BOOT;
+			}
 			break;
 
 		case Si46xx_STATE_BOOT:

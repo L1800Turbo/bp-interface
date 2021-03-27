@@ -18,7 +18,9 @@ enum Si46xx_States
 	Si46xx_STATE_SAFE_OFF = 0,		/* Safe off state: something serious happened, don't leave this state */
 	Si46xx_STATE_STARTUP,
 	Si46xx_STATE_INIT,
+	Si46xx_STATE_LOAD_INIT,
 	Si46xx_STATE_LOAD_FIRMWARE,
+	Si46xx_STATE_LOAD_FIRMWARE_WAIT,
 	Si46xx_STATE_BOOT,
 
 	Si46xx_STATE_ANSWER,			/* Generic state where the answer gets analyzed */
@@ -36,12 +38,6 @@ enum Si46xx_commands {
 	SI46XX_GET_SYS_STATE = 0x09,	/* Reports system state information. 													*/
 	SI46XX_GET_POWER_UP_ARGS = 0x0A /* Reports basic information about the device such as arguments used during POWER_UP. 	*/
 };
-
-typedef enum {
-	Si46xx_OK = 0,
-	Si46xx_TIMEOUT
-	// TODO usw
-} Si46xx_Error;
 
 enum Si46xx_Switch {
 	Si46xx_DISABLE = 0,
@@ -117,6 +113,22 @@ struct Si46xx_Status_Values {
 	enum Si46xx_ERR_REPLY ERRNR; /* When set a non-recoverable error has occurred. The system keep alive timer has expired. */
 };
 
+typedef struct {
+	uint32_t writeInd;
+	uint32_t readInd;
+
+	uint32_t bufSize;
+
+	uint8_t * data;
+
+	uint32_t receiveTimestamp;
+}firmwareBuffer_dt;
+
+typedef enum {
+	FWBUF_OK = 0,
+	FWBUF_NO_DATA
+}firmwareBuffer_state_dt;
+
 struct Si46xx_Config {
 	struct Si46xx_Init_Values initConfig;
 	SPI_HandleTypeDef * hspi;
@@ -127,17 +139,26 @@ struct Si46xx_Config {
 	enum Si46xx_States state;
 	enum Si46xx_States stateAfter;	/* In case a following state is used (after answer) */
 
-	uint8_t answerBytes;			/* How many bytes should the answer contain? Depends on the preceding CMD, min 4 bytes */
+	uint16_t answerBytes;			/* How many bytes should the answer contain? Depends on the preceding CMD, min 4 bytes */
 	uint32_t timeoutVal;
 
 	//enum Si46xx_InterruptFlag interruptFlag;
 	uint8_t intstate;
 
+	firmwareBuffer_dt * firmwareBuf;
+
 };
 
-Si46xx_Error Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
+HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
 void Si46xx_Send_Reset(void);
+void Si46xx_GetFW(uint8_t * buffer, uint32_t length);
 void Si46xx_Tasks(void);
+
+firmwareBuffer_dt * fwBufferInit(uint32_t size);
+uint32_t fwBufferCurrentSize(firmwareBuffer_dt * buf);
+firmwareBuffer_state_dt fwBufferGet(firmwareBuffer_dt * buf, uint8_t * bufPtr);
+//uint8_t * fwBufferGet(firmwareBuffer_dt * buf, uint32_t size);
+void fwBufferWrite(firmwareBuffer_dt * buf, uint8_t * bufPtr, uint32_t size);
 
 
 #endif /* INC_SI46XX_H_ */
