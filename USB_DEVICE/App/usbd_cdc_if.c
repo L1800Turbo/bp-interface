@@ -280,10 +280,14 @@ uint16_t cdcData[20];
 	extern void Si46xx_ReceiveFW(uint8_t * buffer, uint32_t length);
 	extern void Si46xx_Send_Reset(void);
 
-	if(Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE_WAIT)
+	//if(Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE || Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE_WAIT)
+	if(Si46xxCfg.firmwareBuf->fwStep != FW_NONE)
 	{
 		//Si46xx_TransmitFW(Buf, *Len); // TODO: aktuell Blocking
-		Si46xx_GetFW(Buf, *Len);
+		if(Si46xx_GetFW(Buf, *Len) == FWBUF_SIZE)
+		{
+			return USBD_BUSY;
+		}
 	}
 	else
 	{

@@ -19,9 +19,10 @@ enum Si46xx_States
 	Si46xx_STATE_STARTUP,
 	Si46xx_STATE_INIT,
 	Si46xx_STATE_LOAD_INIT,
-	Si46xx_STATE_LOAD_FIRMWARE,
-	Si46xx_STATE_LOAD_FIRMWARE_WAIT,
+	Si46xx_STATE_LOAD_FW_FROM_FLASH,
+	Si46xx_STATE_LOAD_FIRMWARE_FROM_BUFFER,
 	Si46xx_STATE_BOOT,
+	Si46xx_STATE_IDLE,
 
 	Si46xx_STATE_ANSWER,			/* Generic state where the answer gets analyzed */
 };
@@ -113,21 +114,35 @@ struct Si46xx_Status_Values {
 	enum Si46xx_ERR_REPLY ERRNR; /* When set a non-recoverable error has occurred. The system keep alive timer has expired. */
 };
 
-typedef struct {
-	uint32_t writeInd;
-	uint32_t readInd;
-
-	uint32_t bufSize;
-
-	uint8_t * data;
-
-	uint32_t receiveTimestamp;
-}firmwareBuffer_dt;
+enum Si46xx_firmwareStep {
+	FW_NONE = 0,
+	FW_BOOTLOADER_PATCH,
+	FW_FIRMWARE,
+	FW_STEP_SIZE
+};
 
 typedef enum {
 	FWBUF_OK = 0,
-	FWBUF_NO_DATA
+	FWBUF_NO_DATA,
+	FWBUF_BUSY,
+	FWBUF_ERROR,
+	FWBUF_SIZE, // If full
 }firmwareBuffer_state_dt;
+
+typedef struct {
+	volatile uint32_t writeInd;
+	volatile uint32_t readInd;
+	uint32_t bufSize;
+	volatile uint8_t * data;
+
+	volatile uint32_t receiveTimestamp;
+
+	firmwareBuffer_state_dt currentState;
+
+	uint32_t byteCount; // TODO: test, wie viele er gezählt hat
+
+	enum Si46xx_firmwareStep fwStep; // Load Patch and FW afterwards
+}firmwareBuffer_dt;
 
 struct Si46xx_Config {
 	struct Si46xx_Init_Values initConfig;
@@ -145,13 +160,22 @@ struct Si46xx_Config {
 	//enum Si46xx_InterruptFlag interruptFlag;
 	uint8_t intstate;
 
-	firmwareBuffer_dt * firmwareBuf;
+	firmwareBuffer_dt * firmwareBuf; // Ringbuffer
+
+	// Helper to read buffer
+	uint8_t * fwBufferPtr;
+	uint32_t fwBufferSize;
 
 };
 
+// Bootloader patch
+const uint8_t Si46xx_Rom00Patch016[5796];
+//const uint8_t Si46xx_Firmware[499760]; // BIF
+const uint8_t Si46xx_Firmware[499356]; // BIN
+
 HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
 void Si46xx_Send_Reset(void);
-void Si46xx_GetFW(uint8_t * buffer, uint32_t length);
+firmwareBuffer_state_dt Si46xx_GetFW(uint8_t * buffer, uint32_t length);
 void Si46xx_Tasks(void);
 
 firmwareBuffer_dt * fwBufferInit(uint32_t size);
@@ -159,6 +183,6 @@ uint32_t fwBufferCurrentSize(firmwareBuffer_dt * buf);
 firmwareBuffer_state_dt fwBufferGet(firmwareBuffer_dt * buf, uint8_t * bufPtr);
 //uint8_t * fwBufferGet(firmwareBuffer_dt * buf, uint32_t size);
 void fwBufferWrite(firmwareBuffer_dt * buf, uint8_t * bufPtr, uint32_t size);
-
+void fwBufferClear(ringbuf_dt * buf);
 
 #endif /* INC_SI46XX_H_ */
