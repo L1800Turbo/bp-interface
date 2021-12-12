@@ -7,27 +7,15 @@
  *      Author: kai
 
 TODO:
-- Generische Funktion, die SPI-Befehl absetzt
-- Generische Funktion, die Antwort-Befehl absetzt und Antwort auswertet
-	- die Länge der Rückgaben und so müsste man dann noch als Parameter übergeben (in irgendwie eine Config packen?
+- Reply-Bytes im Running-Modus sind ein bisschen anders:
+ - Abhängig vom Bootzustand ergänzen
+ - Bootzustand durch Abfrage gewährleisten
 
-Befehl Senden IT -> IT vom Si46, wenn Takko, dann Befehl SPI holen
-
-Programmierung über DMA UART->SPI??
-
-so zS bauen?
-   Configure MEMS: data rate, power mode, full scale, self test and axes
-    ctrl = (uint16_t) (lis302dl_initstruct.Output_DataRate | lis302dl_initstruct.Power_Mode | \
-                       lis302dl_initstruct.Full_Scale | lis302dl_initstruct.Self_Test | \
-                       lis302dl_initstruct.Axes_Enable);
-
-Strukt bauen, der
-- den Pointer zur Funktion enthält
-- die Angabe über eine Rückgabeanzahl
-- und eine Funktion zum antwort auswerten
-- eine Typische Wartezeit? ODer besser Interrupt nehmen?
-oder:
-- einfache Funktionen nur über SPI-Befehl, da immer 2 byte. aber nicht so cool, oder?
+- Struct bauen mit
+	- Ptr auf Antfrage-Funktion
+	- Ptr auf Antwort-Auswerte-Funktion (das, was nach dem Antworten kommt)
+	- Länge der Antwort
+	- Default-Timeout
 
  */
 #include "Si46xx.h"
@@ -37,14 +25,14 @@ struct Si46xx_Config Si46xxCfg;
 #define SI46XX_CS_ON()  HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET)
 #define SI46XX_CS_OFF() HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET)
 
-#define SI46XX_INTB_STATE HAL_GPIO_ReadPin(Si46xx_INTB_GPIO_Port, Si46xx_INTB_Pin)
+//#define SI46XX_INTB_STATE HAL_GPIO_ReadPin(Si46xx_INTB_GPIO_Port, Si46xx_INTB_Pin)
 
 #define SI46XX_RST_ON()  HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_RESET); // Reset LOW
 #define SI46XX_RST_OFF() HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_SET);
 #define SI46XX_RST_WAIT_BEFORE 10 // ms
 #define SI46XX_RST_WAIT_AFTER   4 // 3.2ms
 
-#define SI46XX_CURRENT_WAIT_TIME (HAL_GetTick() - Si46xxCfg.timeoutVal)
+#define SI46XX_CURRENT_WAIT_TIME (HAL_GetTick() - Si46xxCfg.timeoutStamp)
 #define SI46XX_DEFAULT_SPI_WAIT 10 // ms, when looping and polling for an SPI ready state from uC or Si46xx
 
 char firmwareStepTexts[FW_STEP_SIZE][20] =
@@ -55,14 +43,14 @@ char firmwareStepTexts[FW_STEP_SIZE][20] =
 };
 
 
-/*void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	HAL_GPIO_TogglePin(LED_ORANGE_Port, LED_ORANGE_Pin);
 	if(GPIO_Pin == Si46xx_INTB_Pin)
 	{
 		Si46xxCfg.interruptFlag = Si46xx_INT_FLAG_SET;
 	}
-}*/
+}
 
 void Si46xx_Set_AnswerState(enum Si46xx_States current, enum Si46xx_States after, uint16_t answerBytes);
 
@@ -98,6 +86,14 @@ void HAL_SPI_TxCpltCallback (SPI_HandleTypeDef * hspi)
  */
 HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len)
 {
+	HAL_StatusTypeDef state = hspi->State;
+
+	/* Stop here if SPI isn't ready */
+	if(state != HAL_OK)
+	{
+		return state;
+	}
+
 	if(len < 4)
 	{
 		len = 4;
@@ -106,16 +102,9 @@ HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, 
 	uint8_t zeroes[1+len]; // {0, ??? TODO dynamisch mit memalloc oder sowas
 	memset(zeroes, 0, 1+len);
 
-	HAL_StatusTypeDef state = HAL_OK;
-	// TODO Abfrage, ob sendebereit
-
-	//HAL_SPI_STATE_BUSY_RX
-
 	SI46XX_CS_ON();
 	state = HAL_SPI_TransmitReceive(hspi, zeroes, data, len+1, 100); // TODO irgendwann als IT Version? TODO status ist kein si46xxx.... muss gewandelt!!
 	SI46XX_CS_OFF();
-
-	//printf("State: %d\r\n",state);
 
 	return state;
 }
@@ -140,11 +129,13 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	Si46xxCfg.initConfig = init;
 	Si46xxCfg.hspi = hspi;
 
-	Si46xxCfg.intstate = SI46XX_INTB_STATE;
+	//Si46xxCfg.intstate = SI46XX_INTB_STATE;
 
 	Si46xxCfg.state = Si46xx_STATE_SAFE_OFF; //Si46xx_STATE_STARTUP;
 
-	Si46xxCfg.firmwareBuf = fwBufferInit(8192);
+	Si46xxCfg.timeoutValue = SI46XX_DEFAULT_SPI_WAIT;
+
+	Si46xxCfg.firmwareBuf = fwBufferInit(8192); // TODO: der muss ja auch wieder gelöscht werden, sonst muss man ihn nicht dynamisch bauen
 	Si46xxCfg.firmwareBuf->fwStep = FW_NONE;
 //	Si46xxCfg.firmwareBuf->fwStep = FW_BOOTLOADER_PATCH;
 
@@ -176,7 +167,7 @@ HAL_StatusTypeDef Si46xx_Send_PowerUp(void)
 
 	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 16);
 
-	Si46xxCfg.timeoutVal = HAL_GetTick(); // For first waiting time before triggering RST pin
+	Si46xxCfg.timeoutStamp = HAL_GetTick(); // For first waiting time before triggering RST pin
 
 	return state;
 }
@@ -198,6 +189,8 @@ HAL_StatusTypeDef Si46xx_Send_Boot(void)
 {
 	uint8_t data[2];
 	HAL_StatusTypeDef state = HAL_OK;
+
+	Si46xxCfg.timeoutValue = 300;
 
 	data[0] = SI46XX_BOOT;
 	data[1] = 0x00;
@@ -224,7 +217,7 @@ void Si46xx_Send_Reset(void)
 {
 	SI46XX_RST_ON();
 
-	Si46xxCfg.timeoutVal = HAL_GetTick();
+	Si46xxCfg.timeoutStamp = HAL_GetTick();
 	Si46xxCfg.state = Si46xx_STATE_STARTUP;
 	Si46xxCfg.firmwareBuf->fwStep = FW_BOOTLOADER_PATCH;
 }
@@ -278,11 +271,28 @@ firmwareBuffer_state_dt Si46xx_GetFW(uint8_t * buffer, uint32_t length)
 	return FWBUF_OK;
 }
 
+HAL_StatusTypeDef Si46xx_SetProperty(Si46xx_Property property, uint16_t value)
+{
+	uint8_t data[6];
+	HAL_StatusTypeDef state = HAL_OK;
+
+	data[0] = SI46XX_SET_PROPERTY;
+	data[1] = 0x00;
+	data[2] = property & 0xFF;
+	data[3] = (property >> 8) & 0xFF;
+	data[4] = value & 0xFF;
+	data[5] = (value >> 8) & 0xFF;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 6);
+
+	return state;
+}
+
 void Si46xx_Set_AnswerState(enum Si46xx_States current, enum Si46xx_States after, uint16_t answerBytes)
 {
 	Si46xxCfg.answerBytes = answerBytes;
 
-	Si46xxCfg.timeoutVal = HAL_GetTick();
+	Si46xxCfg.timeoutStamp = HAL_GetTick();
 
 	Si46xxCfg.stateBefore = current;
 	Si46xxCfg.state       = Si46xx_STATE_ANSWER;
@@ -309,6 +319,8 @@ void Si46xx_Tasks()
 	uint32_t currentSize; // TODO Temp
 	uint32_t currentTimeout = 0; // TODO Temp
 
+	uint8_t data[1 + Si46xxCfg.answerBytes]; // used in Si46xx_STATE_ANSWER
+
 	switch(Si46xxCfg.state)
 	{
 		case Si46xx_STATE_SAFE_OFF:
@@ -317,17 +329,20 @@ void Si46xx_Tasks()
 
 		/* Release reset after a mininmum time */
 		case Si46xx_STATE_STARTUP:
-			if(SI46XX_CURRENT_WAIT_TIME > SI46XX_RST_WAIT_BEFORE /*&& HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1*/)
+			if(SI46XX_CURRENT_WAIT_TIME < SI46XX_RST_WAIT_BEFORE /*&& HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1*/)
 			{
-				printf("\033[1;36mSi46xx_Tasks: STARTUP\033[0m\r\n");
-
-				SI46XX_RST_OFF();
-				Si46xxCfg.timeoutVal = HAL_GetTick();
-
-				Si46xxCfg.state = Si46xx_STATE_INIT;
+				break;
 			}
+
+			printf("\033[1;36mSi46xx_Tasks: STARTUP\033[0m\r\n");
+
+			SI46XX_RST_OFF();
+			Si46xxCfg.timeoutStamp = HAL_GetTick();
+
+			Si46xxCfg.state = Si46xx_STATE_INIT;
 			break;
 
+		/* Send initialization after reset wait time */
 		case Si46xx_STATE_INIT:
 			if(SI46XX_CURRENT_WAIT_TIME < SI46XX_RST_WAIT_AFTER)
 			{
@@ -347,17 +362,24 @@ void Si46xx_Tasks()
 			break;
 
 		case Si46xx_STATE_ANSWER:
-
-			// TODO: Workaround TEST
-			if(Si46xxCfg.hspi->State != HAL_SPI_STATE_READY) // NACHDEM SPI fertig ist soll ja gewartet werden....
+			/* Check if SPI is ready since last sent message */
+			if(Si46xxCfg.hspi->State != HAL_SPI_STATE_READY)
 			{
-				Si46xxCfg.timeoutVal = HAL_GetTick();
-			}
-			if(SI46XX_CURRENT_WAIT_TIME < 5)
-			{
+				Si46xxCfg.timeoutStamp = HAL_GetTick();
 				break;
 			}
 
+			/* If either interrupt flag isn't met or minimum wait time is over, wait
+			 * -> Interrupt flags need at least bootloader patch to be transferred, otherwise Si46xx doesn't send them
+			 */
+			if((Si46xxCfg.interruptFlag != Si46xx_INT_FLAG_SET) && (SI46XX_CURRENT_WAIT_TIME < Si46xxCfg.timeoutValue))
+			{
+				break;
+			}
+			Si46xxCfg.interruptFlag = Si46xx_INT_FLAG_UNSET;
+			Si46xxCfg.timeoutValue  = SI46XX_DEFAULT_SPI_WAIT; // Reset timeout to default value
+
+			/*
 			if(Si46xxCfg.stateBefore == Si46xx_STATE_LOAD_FW_FROM_FLASH)
 			{
 				HAL_GPIO_TogglePin(LED_ORANGE_Port, LED_ORANGE_Pin);
@@ -371,80 +393,66 @@ void Si46xx_Tasks()
 			if(Si46xxCfg.stateBefore == Si46xx_STATE_BOOT && SI46XX_CURRENT_WAIT_TIME < 300)
 			{
 				break;
-			}
-			//if(Si46xxCfg.interruptFlag == Si46xx_INT_FLAG_SET)
-			//if(Si46xxCfg.intstate != SI46XX_INTB_STATE)
-			if(Si46xxCfg.hspi->State == HAL_SPI_STATE_READY) // TODO Temporätr
-				// Die lange ZEit benötigt er wohl nur beim starten, später dann nicht mehr...
+			}*/
+
+			if(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, Si46xxCfg.answerBytes) == HAL_OK)
 			{
-				uint8_t data[1 + Si46xxCfg.answerBytes]; // TODO: Geht das??
-				//uint8_t * data;
-				/* Answer is ready after interrupt */ //TODO interrupt/polling driven Auswahl? Bei fehlern auch INT?
-				Si46xxCfg.intstate = SI46XX_INTB_STATE;
+				progress_StatusBytes(&data[1]); // TODO: Wenn alles FF ist ,auch noch warten -> minimale Zeit erhöhen?
 
-				Si46xxCfg.timeoutVal = HAL_GetTick(); // TODO temp weiter warten, das INT-Flag tut irgendwie noch nicht
-
-				//data = malloc(Si46xxCfg.answerBytes); // TODO: lässt malloc die auch selbst wieder los?
-				// free(data);
-
-				if(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, Si46xxCfg.answerBytes) == HAL_OK) // TODO ohne Else loopt er dann, wenn er busy ist
+				/* If there are more answer bytes: back to buffer */
+				if(sizeof(data) > 5)
 				{
-					progress_StatusBytes(&data[1]); // TODO: Wenn alles FF ist ,auch noch warten
-
-					/* If there are more answer bytes: back to buffer */
-					if(sizeof(data) > 5)
+					uint16_t dataSize = sizeof(data)-5;
+					if(dataSize > sizeof(spiBuffer))
 					{
-						uint8_t dataSize = sizeof(data)-5;
-						if(dataSize > sizeof(spiBuffer))
-						{
-							dataSize = sizeof(spiBuffer);
-						}
-						memcpy(spiBuffer, (data+5), dataSize);
+						dataSize = sizeof(spiBuffer);
 					}
-
-					if // Reset device
-					(
-						Si46xxCfg.currentStatus.ARBERR == Si46xx_ERR_ERROR || /* An arbiter overflow has occurred. The only way to recover is for the user to reset the chip. */
-						Si46xxCfg.currentStatus.ERRNR  == Si46xx_ERR_ERROR /* Fatal error has occurred. The only way to recover is for the user to reset the chip.*/
-					)
-					{
-						printf("ARBERR/ERRNR: Reseting device\r\n");
-						Si46xx_Send_Reset();
-						break;
-					}
-					else if // Resend last command
-					(
-							Si46xxCfg.currentStatus.CMDOFERR == Si46xx_ERR_ERROR || /* The command interface has overflowed, and data has been lost */
-							Si46xxCfg.currentStatus.REPOFERR == Si46xx_ERR_ERROR    /* The reply interface has underflowed, and bad data has been returned to the user */
-					)
-					{
-						Si46xxCfg.state       = Si46xxCfg.stateBefore;
-						Si46xxCfg.stateBefore = Si46xx_STATE_SAFE_OFF; // als 0
-						Si46xxCfg.stateAfter  = Si46xx_STATE_SAFE_OFF; // als 0
-
-						printf("CMDOFERR/REPOFERR: Going to previous state\r\n");
-
-						break;
-					}
-
-					if(Si46xxCfg.currentStatus.CTS == Si46xx_CTS_READY) // Ready for next command
-					{
-						Si46xxCfg.state 	  = Si46xxCfg.stateAfter;
-						Si46xxCfg.stateBefore = Si46xx_STATE_SAFE_OFF; // als 0
-						Si46xxCfg.stateAfter  = Si46xx_STATE_SAFE_OFF; // als 0
-
-						// TODO: Aber wenn andere Befehle ausgeführt werden? ERR_CMD??
-					}
-
+					memcpy(spiBuffer, (data+5), dataSize);
 				}
+
+				if // Reset device
+				(
+					Si46xxCfg.currentStatus.ARBERR == Si46xx_ERR_ERROR || /* An arbiter overflow has occurred. The only way to recover is for the user to reset the chip. */
+					Si46xxCfg.currentStatus.ERRNR  == Si46xx_ERR_ERROR /* Fatal error has occurred. The only way to recover is for the user to reset the chip.*/
+				)
+				{
+					printf("ARBERR/ERRNR: Reseting device\r\n");
+					Si46xx_Send_Reset();
+					break;
+				}
+				else if // Resend last command
+				(
+						Si46xxCfg.currentStatus.CMDOFERR == Si46xx_ERR_ERROR || /* The command interface has overflowed, and data has been lost */
+						Si46xxCfg.currentStatus.REPOFERR == Si46xx_ERR_ERROR    /* The reply interface has underflowed, and bad data has been returned to the user */
+				)
+				{
+					Si46xxCfg.state       = Si46xxCfg.stateBefore;
+					Si46xxCfg.stateBefore = Si46xx_STATE_SAFE_OFF; // als 0
+					Si46xxCfg.stateAfter  = Si46xx_STATE_SAFE_OFF; // als 0
+
+					printf("CMDOFERR/REPOFERR: Going to previous state\r\n");
+
+					break;
+				}
+
+				if(Si46xxCfg.currentStatus.CTS == Si46xx_CTS_READY) // Ready for next command
+				{
+					Si46xxCfg.state 	  = Si46xxCfg.stateAfter;
+					Si46xxCfg.stateBefore = Si46xx_STATE_SAFE_OFF; // als 0
+					Si46xxCfg.stateAfter  = Si46xx_STATE_SAFE_OFF; // als 0
+
+					// TODO: Aber wenn andere Befehle ausgeführt werden? ERR_CMD??
+				}
+
 			}
 			break;
 
 		case Si46xx_STATE_LOAD_INIT: /* Prepare to load firmware */
-			if(SI46XX_CURRENT_WAIT_TIME < SI46XX_DEFAULT_SPI_WAIT)
+			/* TODO: sollte nicht nötig sein, oder?
+			 * if(SI46XX_CURRENT_WAIT_TIME < SI46XX_DEFAULT_SPI_WAIT)
 			{
 				break;
-			}
+			}*/
 
 			/* Go to next state if all firmware is programmed */
 			if(Si46xxCfg.firmwareBuf->fwStep > FW_FIRMWARE)
@@ -452,9 +460,11 @@ void Si46xx_Tasks()
 				printf("Trying to boot...\r\n");
 
 				Si46xxCfg.state = Si46xx_STATE_BOOT;
-				Si46xxCfg.firmwareBuf->fwStep = FW_NONE;
+				// TODO nicht nötig, oder? Si46xxCfg.firmwareBuf->fwStep = FW_NONE;
 				break;
 			}
+
+			printf("\033[1;36mSi46xx_Tasks: LOAD_INIT\033[0m\r\n");
 
 			switch(Si46xx_Send_LoadInit())
 			{
@@ -493,7 +503,7 @@ void Si46xx_Tasks()
 					break;
 
 				case HAL_BUSY:
-					Si46xxCfg.timeoutVal = HAL_GetTick();
+					Si46xxCfg.timeoutStamp = HAL_GetTick();
 					break;
 
 				default: // Problems...
@@ -503,10 +513,10 @@ void Si46xx_Tasks()
 			break;
 
 		case Si46xx_STATE_LOAD_FW_FROM_FLASH:
-			if(SI46XX_CURRENT_WAIT_TIME < 4)
+			/* TODO sollte nicht mehr nötig sein if(SI46XX_CURRENT_WAIT_TIME < 4)
 			{
 				break;
-			}
+			}*/
 
 			switch(Si46xx_HostLoad_Flash(Si46xxCfg.fwBufferPtr, (Si46xxCfg.fwBufferSize > 4092 ? 4092 : Si46xxCfg.fwBufferSize)))
 			{
@@ -528,10 +538,10 @@ void Si46xx_Tasks()
 					break;
 
 				case HAL_BUSY:
-					Si46xxCfg.timeoutVal = HAL_GetTick();
+					Si46xxCfg.timeoutStamp = HAL_GetTick();
 					break;
 				default: // Problems... Try again
-					Si46xxCfg.timeoutVal = HAL_GetTick();
+					Si46xxCfg.timeoutStamp = HAL_GetTick();
 					Si46xxCfg.state = Si46xx_STATE_LOAD_INIT;
 					break;
 			}
@@ -626,6 +636,7 @@ void Si46xx_Tasks()
 			{
 				break;
 			}*/
+			printf("\033[1;36mSi46xx_Tasks: BOOT\033[0m\r\n");
 
 			switch(Si46xx_Send_Boot())
 			{
@@ -634,7 +645,7 @@ void Si46xx_Tasks()
 					break;
 
 				case HAL_BUSY:
-					Si46xxCfg.timeoutVal = HAL_GetTick();
+					Si46xxCfg.timeoutStamp = HAL_GetTick();
 					break;
 
 				default: // Problems...
@@ -660,7 +671,7 @@ void Si46xx_Tasks()
 					break;
 
 				case HAL_BUSY:
-					Si46xxCfg.timeoutVal = HAL_GetTick();
+					Si46xxCfg.timeoutStamp = HAL_GetTick();
 					break;
 
 				default: // Problems...
@@ -669,7 +680,7 @@ void Si46xx_Tasks()
 			}
 			break;
 
-		//case DAB konfiguieren: analogen Ausgang, Lautstärke 100%
+
 		//case Sendersuchlauf (beim ersten MAl aufrufen, wnen nichts abgespeichert ist, oder manuell aufgerufen wird?)
 		//case Tune auf einen Sender (letzten gespeicherten oder 0)
 		//case Change Frequenz und Channel und so (später dann mit den Pfeiltasten...

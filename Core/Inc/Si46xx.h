@@ -25,6 +25,8 @@ enum Si46xx_States
 	Si46xx_STATE_IDLE,
 
 	Si46xx_STATE_ANSWER,			/* Generic state where the answer gets analyzed */
+
+	Si46xx_STATE_COUNT
 };
 
 enum Si46xx_commands {
@@ -37,8 +39,14 @@ enum Si46xx_commands {
 	SI46XX_BOOT          = 0x07,	/* Boots the image currently loaded in RAM. 											*/
 	SI46XX_GET_PART_INFO = 0x08,	/* Reports basic information about the device. 											*/
 	SI46XX_GET_SYS_STATE = 0x09,	/* Reports system state information. 													*/
-	SI46XX_GET_POWER_UP_ARGS = 0x0A /* Reports basic information about the device such as arguments used during POWER_UP. 	*/
+	SI46XX_GET_POWER_UP_ARGS = 0x0A,/* Reports basic information about the device such as arguments used during POWER_UP. 	*/
+
+	SI46XX_SET_PROPERTY  = 0x13,	/* Sets the value of a property.														*/
 };
+
+typedef enum{
+	DAB_TUNE_FE_CFG		= 0x1712,	/* Additional configuration options for the front end. Default: 0x0001					*/
+}Si46xx_Property;
 
 enum Si46xx_Switch {
 	Si46xx_DISABLE = 0,
@@ -52,10 +60,10 @@ enum Si46xx_ClockMode_Config {
 	Si46xx_DIFF_BF 	= 0x3 	/* Oscillator is off and circuit acts as differential buffer. 	*/
 };
 
-/*enum Si46xx_InterruptFlag {
+enum Si46xx_InterruptFlag {
 	Si46xx_INT_FLAG_UNSET = 0,
 	Si46xx_INT_FLAG_SET
-};*/
+};
 
 
 
@@ -121,6 +129,8 @@ enum Si46xx_firmwareStep {
 	FW_STEP_SIZE
 };
 
+
+// TODO: Firmware-Kram weg
 typedef enum {
 	FWBUF_OK = 0,
 	FWBUF_NO_DATA,
@@ -150,15 +160,18 @@ struct Si46xx_Config {
 
 	struct Si46xx_Status_Values currentStatus;
 
+	// TODO: struct dabStatus definieren: DAB_DIGRAD_STATUS, siehe Notizen.txt
+
 	enum Si46xx_States stateBefore;
 	enum Si46xx_States state;
 	enum Si46xx_States stateAfter;	/* In case a following state is used (after answer) */
 
 	uint16_t answerBytes;			/* How many bytes should the answer contain? Depends on the preceding CMD, min 4 bytes */
-	uint32_t timeoutVal;
+	uint32_t timeoutStamp;			/* Timestamp for timeout */
+	uint32_t timeoutValue;			/* How long should be waited for next SPI command */
 
-	//enum Si46xx_InterruptFlag interruptFlag;
-	uint8_t intstate;
+	enum Si46xx_InterruptFlag interruptFlag;
+	//uint8_t intstate;
 
 	firmwareBuffer_dt * firmwareBuf; // Ringbuffer
 
