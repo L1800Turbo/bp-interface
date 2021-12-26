@@ -7,7 +7,7 @@
 
 #include "Si46xx.h"
 
-firmwareBuffer_dt * fwBufferInit(uint32_t size)
+/*firmwareBuffer_dt * fwBufferInit(uint32_t size)
 {
 	firmwareBuffer_dt * buf = (firmwareBuffer_dt*) malloc(sizeof(firmwareBuffer_dt));
 
@@ -17,7 +17,7 @@ firmwareBuffer_dt * fwBufferInit(uint32_t size)
 	buf->bufSize  = size;
 	buf->data = (uint8_t*) malloc(sizeof(uint8_t) * (size + 1));
 
-	return buf; /* Return ptr to buffer */
+	return buf; // Return ptr to buffer
 }
 
 void fwBufferClear(ringbuf_dt * buf)
@@ -69,7 +69,7 @@ firmwareBuffer_state_dt fwBufferGet(firmwareBuffer_dt * buf, uint8_t * bufPtr)
 			return state;
 		}
 
-		if(buf->readInd == buf->writeInd) /* Mustn't read from a position where it is written in */
+		if(buf->readInd == buf->writeInd) // Mustn't read from a position where it is written in
 		{
 			state = FWBUF_NO_DATA;
 		}
@@ -90,7 +90,7 @@ firmwareBuffer_state_dt fwBufferGet(firmwareBuffer_dt * buf, uint8_t * bufPtr)
 
 void fwBufferWrite(firmwareBuffer_dt * buf, uint8_t * bufPtr, uint32_t size) // TODO: und wenn er sich selbst überschreibt?
 {
-	if(buf /*&& (buf->currentState != FWBUF_BUSY)*/)
+	if(buf /&& (buf->currentState != FWBUF_BUSY)*)
 	{
 		//buf->currentState = FWBUF_BUSY;
 		while(size--)
@@ -102,7 +102,7 @@ void fwBufferWrite(firmwareBuffer_dt * buf, uint8_t * bufPtr, uint32_t size) // 
 		}
 		//buf->currentState = FWBUF_OK;
 	}
-}
+}*/
 
 const uint8_t Si46xx_Rom00Patch016[5796] =
 {

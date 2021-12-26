@@ -13,21 +13,13 @@
 #include "stm32f4xx_hal.h"
 #include "main.h"
 
-enum Si46xx_States
-{
-	Si46xx_STATE_SAFE_OFF = 0,		/* Safe off state: something serious happened, don't leave this state */
-	Si46xx_STATE_STARTUP,
-	Si46xx_STATE_INIT,
-	Si46xx_STATE_LOAD_INIT,
-	Si46xx_STATE_LOAD_FW_FROM_FLASH,
-	Si46xx_STATE_LOAD_FIRMWARE_FROM_BUFFER,
-	Si46xx_STATE_BOOT,
-	Si46xx_STATE_IDLE,
+#define SI46XX_DEFAULT_SPI_WAIT 10 // ms, when looping and polling for an SPI ready state from uC or Si46xx
 
-	Si46xx_STATE_ANSWER,			/* Generic state where the answer gets analyzed */
+#define SI46XX_RST_ON()  HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_RESET); // Reset LOW
+#define SI46XX_RST_OFF() HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_SET);
 
-	Si46xx_STATE_COUNT
-};
+#define SI46XX_CS_ON()  HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET)
+#define SI46XX_CS_OFF() HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET)
 
 enum Si46xx_commands {
 	/* Boot commands */
@@ -42,45 +34,6 @@ enum Si46xx_commands {
 	SI46XX_GET_POWER_UP_ARGS = 0x0A,/* Reports basic information about the device such as arguments used during POWER_UP. 	*/
 
 	SI46XX_SET_PROPERTY  = 0x13,	/* Sets the value of a property.														*/
-};
-
-typedef enum{
-	DAB_TUNE_FE_CFG		= 0x1712,	/* Additional configuration options for the front end. Default: 0x0001					*/
-}Si46xx_Property;
-
-enum Si46xx_Switch {
-	Si46xx_DISABLE = 0,
-	Si46xx_ENABLE  = 1
-};
-
-enum Si46xx_ClockMode_Config {
-	Si46xx_OFF 	    = 0x0, 	/* Oscillator and buffer are powered down. 						*/
-	Si46xx_XOSC 	= 0x1, 	/* Reference clock generator is in crystal mode. 				*/
-	Si46xx_SING_BF 	= 0x2, 	/* Oscillator is off and circuit acts as single ended buffer. 	*/
-	Si46xx_DIFF_BF 	= 0x3 	/* Oscillator is off and circuit acts as differential buffer. 	*/
-};
-
-enum Si46xx_InterruptFlag {
-	Si46xx_INT_FLAG_UNSET = 0,
-	Si46xx_INT_FLAG_SET
-};
-
-
-
-struct Si46xx_Init_Values {
-	enum Si46xx_Switch CTS_InterruptEnable; /* The bootloader will toggle a host interrupt line when CTS is available. */
-    enum Si46xx_ClockMode_Config CLK_MODE; /* Choose clock mode. See refclk spec sheet for more information           */
-    uint8_t XOSC_TR_SIZE;	/* XOSC TR_SIZE. See refclk spec sheet for more information.				  */
-    uint8_t IBIAS;     		/* XTAL IBIAS current at startup. See refclk spec sheet for more information.
-    							This parameter is only required if using the crystal oscillator.
-    							10 uA steps, 0 to 1270 uA. */
-    uint8_t IBIAS_RUN;		/* XTAL IBIAS current at runtime, after the XTAL oscillator has stabalized. See refclk spec sheet for more information.
-        						This parameter is only required if using the crystal oscillator. 10 uA steps, 10 to 1270 uA.
-        						If set to 0, will use the same value as IBIAS. */
-    uint32_t XTAL_Freq;		/* XTAL Frequency in Hz. The supported crystal frequencies are:
-								[5.4 MHz - 6.6 MHz], [10.8 MHz - 13.2 MHz], [16.8 MHz - 19.8 MHz], [21.6 MHz - 26.4 MHz], [27 MHz - 46.2 MHz]. */
-    uint8_t CTUN;			/* CTUN. See refclk spec sheet for more information.
-    							This parameter is only required if using the crystal oscillator. */
 };
 
 enum Si46xx_CTS {
@@ -102,7 +55,8 @@ enum Si46xx_PUP_STATE {
 	Si46xx_PUP_APP 		 	/* An application was successfully booted and is currently running. */
 };
 
-struct Si46xx_Status_Values {
+typedef struct
+{
 	/* Clear-to-send (bit 7 of the STATUS field which is read by the user) Indicates whether the user may send a new firmware-interpreted command and
 	 * retrieve a reply from the previous command. It has no effect for hardware-interpreted commands. When a new read or write transaction is started
 	 * on the serial port, the current state of CTS is captured into a temporary register, which is considered to be the state of CTS for the duration
@@ -120,65 +74,62 @@ struct Si46xx_Status_Values {
 									   This is generally caused by running at a SPI clock rate that is too fast for the data arbiter and memory speed. */
 	enum Si46xx_ERR_REPLY ARBERR;	/* When set an arbiter error has occurred. */
 	enum Si46xx_ERR_REPLY ERRNR; /* When set a non-recoverable error has occurred. The system keep alive timer has expired. */
+}Si46xx_Status_Values_dt;
+
+enum Si46xx_Switch {
+	Si46xx_DISABLE = 0,
+	Si46xx_ENABLE  = 1
 };
 
-enum Si46xx_firmwareStep {
-	FW_NONE = 0,
-	FW_BOOTLOADER_PATCH,
-	FW_FIRMWARE,
-	FW_STEP_SIZE
+enum Si46xx_ClockMode_Config {
+	Si46xx_OFF 	    = 0x0, 	/* Oscillator and buffer are powered down. 						*/
+	Si46xx_XOSC 	= 0x1, 	/* Reference clock generator is in crystal mode. 				*/
+	Si46xx_SING_BF 	= 0x2, 	/* Oscillator is off and circuit acts as single ended buffer. 	*/
+	Si46xx_DIFF_BF 	= 0x3 	/* Oscillator is off and circuit acts as differential buffer. 	*/
 };
 
+struct Si46xx_Init_Values {
+	enum Si46xx_Switch CTS_InterruptEnable; /* The bootloader will toggle a host interrupt line when CTS is available. */
+    enum Si46xx_ClockMode_Config CLK_MODE; /* Choose clock mode. See refclk spec sheet for more information           */
+    uint8_t XOSC_TR_SIZE;	/* XOSC TR_SIZE. See refclk spec sheet for more information.				  */
+    uint8_t IBIAS;     		/* XTAL IBIAS current at startup. See refclk spec sheet for more information.
+    							This parameter is only required if using the crystal oscillator.
+    							10 uA steps, 0 to 1270 uA. */
+    uint8_t IBIAS_RUN;		/* XTAL IBIAS current at runtime, after the XTAL oscillator has stabalized. See refclk spec sheet for more information.
+        						This parameter is only required if using the crystal oscillator. 10 uA steps, 10 to 1270 uA.
+        						If set to 0, will use the same value as IBIAS. */
+    uint32_t XTAL_Freq;		/* XTAL Frequency in Hz. The supported crystal frequencies are:
+								[5.4 MHz - 6.6 MHz], [10.8 MHz - 13.2 MHz], [16.8 MHz - 19.8 MHz], [21.6 MHz - 26.4 MHz], [27 MHz - 46.2 MHz]. */
+    uint8_t CTUN;			/* CTUN. See refclk spec sheet for more information.
+    							This parameter is only required if using the crystal oscillator. */
+};
 
-// TODO: Firmware-Kram weg
-typedef enum {
-	FWBUF_OK = 0,
-	FWBUF_NO_DATA,
-	FWBUF_BUSY,
-	FWBUF_ERROR,
-	FWBUF_SIZE, // If full
-}firmwareBuffer_state_dt;
+enum Si46xx_state_en {
+	Si46xx_STATE_IDLE = 0,
+	Si46xx_STATE_BOOTING
+};
 
-typedef struct {
-	volatile uint32_t writeInd;
-	volatile uint32_t readInd;
-	uint32_t bufSize;
-	volatile uint8_t * data;
-
-	volatile uint32_t receiveTimestamp;
-
-	firmwareBuffer_state_dt currentState;
-
-	uint32_t byteCount; // TODO: test, wie viele er gezählt hat
-
-	enum Si46xx_firmwareStep fwStep; // Load Patch and FW afterwards
-}firmwareBuffer_dt;
-
-struct Si46xx_Config {
-	struct Si46xx_Init_Values initConfig;
+struct Si46xx_Config
+{
+	/* SPI handler */
 	SPI_HandleTypeDef * hspi;
 
-	struct Si46xx_Status_Values currentStatus;
+	/* Initial configuration */
+	struct Si46xx_Init_Values initConfig;
 
-	// TODO: struct dabStatus definieren: DAB_DIGRAD_STATUS, siehe Notizen.txt
+	/* Device status, updated with each SPI status command */
+	Si46xx_Status_Values_dt deviceStatus;
 
-	enum Si46xx_States stateBefore;
-	enum Si46xx_States state;
-	enum Si46xx_States stateAfter;	/* In case a following state is used (after answer) */
+	enum Si46xx_state_en state;
 
-	uint16_t answerBytes;			/* How many bytes should the answer contain? Depends on the preceding CMD, min 4 bytes */
-	uint32_t timeoutStamp;			/* Timestamp for timeout */
-	uint32_t timeoutValue;			/* How long should be waited for next SPI command */
+	/* Waiting routines */
+	uint32_t waitStamp;
+	uint32_t waitTime;
+};
 
-	enum Si46xx_InterruptFlag interruptFlag;
-	//uint8_t intstate;
-
-	firmwareBuffer_dt * firmwareBuf; // Ringbuffer
-
-	// Helper to read buffer
-	uint8_t * fwBufferPtr;
-	uint32_t fwBufferSize;
-
+enum Si46xx_Wait_en {
+	TIME_LEFT = 0,
+	TIME_OVER
 };
 
 // Bootloader patch
@@ -186,16 +137,18 @@ const uint8_t Si46xx_Rom00Patch016[5796];
 //const uint8_t Si46xx_Firmware[499760]; // BIF
 const uint8_t Si46xx_Firmware[499356]; // BIN
 
-HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
-void Si46xx_Send_Reset(void);
-firmwareBuffer_state_dt Si46xx_GetFW(uint8_t * buffer, uint32_t length);
+
 void Si46xx_Tasks(void);
 
-firmwareBuffer_dt * fwBufferInit(uint32_t size);
-uint32_t fwBufferCurrentSize(firmwareBuffer_dt * buf);
-firmwareBuffer_state_dt fwBufferGet(firmwareBuffer_dt * buf, uint8_t * bufPtr);
-//uint8_t * fwBufferGet(firmwareBuffer_dt * buf, uint32_t size);
-void fwBufferWrite(firmwareBuffer_dt * buf, uint8_t * bufPtr, uint32_t size);
-void fwBufferClear(ringbuf_dt * buf);
+HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
+//Si46xx_Status_en Si46xx_getStatus(uint16_t answerBytes, uint8_t * returnDataPtr);
+HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
+HAL_StatusTypeDef Si46xx_SPIsend(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
+
+void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data);
+
+void Si46xx_SetWaitTime(uint32_t ms);
+uint32_t Si46xx_CurrentWaitTime(void);
+uint8_t Si46xx_RemainingTimeLeft(void);
 
 #endif /* INC_SI46XX_H_ */

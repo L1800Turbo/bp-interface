@@ -276,15 +276,15 @@ uint16_t cdcData[20];
 	extern bp_msg_state_dt bpMsgState;
 	extern enum bp_comm_state bpCommState;
 
-	extern struct Si46xx_Config Si46xxCfg;
-	extern void Si46xx_ReceiveFW(uint8_t * buffer, uint32_t length);
-	extern void Si46xx_Send_Reset(void);
+	//extern void Si46xx_ReceiveFW(uint8_t * buffer, uint32_t length);
+	extern void Si46xx_Boot(void);
 
 	//if(Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE || Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE_WAIT)
-	if(Si46xxCfg.firmwareBuf->fwStep != FW_NONE)
+	//if(Si46xxCfg.firmwareBuf->fwStep != FW_NONE)
+	if(0)
 	{
 		//Si46xx_TransmitFW(Buf, *Len); // TODO: aktuell Blocking
-		if(Si46xx_GetFW(Buf, *Len) == FWBUF_SIZE)
+		//if(Si46xx_GetFW(Buf, *Len) == FWBUF_SIZE)
 		{
 			return USBD_BUSY;
 		}
@@ -297,7 +297,8 @@ uint16_t cdcData[20];
 		{
 			if(Buf[i] == 's') // Startbyte für SPI-Geschichten
 			{
-				Si46xx_Send_Reset();
+				Si46xx_Boot();
+				//Si46xx_Send_Reset();
 			}
 			else if(Buf[i] == ' ') // Tabulator 0x09 kann putty über CopyPaste nicht
 			{
