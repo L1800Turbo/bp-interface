@@ -39,6 +39,6 @@ typedef struct
 	uint32_t fwBufSize;
 }Si46xx_firmware_dt;
 
-void Si46xx_Boot_Tasks(void);
+Si46xx_state_en Si46xx_Boot_Tasks(void);
 
 #endif /* INC_SI46XX_BOOT_H_ */

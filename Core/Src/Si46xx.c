@@ -12,14 +12,74 @@
 struct Si46xx_Config Si46xxCfg;
 uint8_t spiBuffer[4096];
 
+Si46xx_msg_dt currentWorkingMsg;
+
 /* Private functions ------------------------------------------- */
 HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
 
+HAL_StatusTypeDef Si46xx_Msg_RefreshSysState_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
 
-extern void Si46xx_Boot_Tasks(void);
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0] = SI46XX_GET_SYS_STATE;
+		data[1] = 0x00;
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+	}
+
+	return state;
+}
+
+HAL_StatusTypeDef Si46xx_Msg_RefreshSysState_receiveFunc()
+{
+	HAL_StatusTypeDef state = HAL_OK;
+
+	state = Si46xx_SPIgetStatus(Si46xxCfg.hspi, spiBuffer, 5);
+
+	if(state != HAL_OK)
+	{
+		return state;
+	}
+
+	progress_StatusBytes(&Si46xxCfg.deviceStatus, &spiBuffer[1]);
+
+	// TODO: Fehlerbehandlung für IC-Errors
+
+	Si46xxCfg.image = spiBuffer[5];
+
+	printf("\033[1;36mSi46xx: Image %d\033[0m\r\n", Si46xxCfg.image);
+
+	return state;
+}
+
+const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
+		{0}, /* SI46XX_MSG_NONE */
+		{.sendFunc = Si46xx_Msg_RefreshSysState_sendFunc, .receiveFunc = Si46xx_Msg_RefreshSysState_receiveFunc }	/* SI46XX_MSG_REFRESH_SYS_STATE */
+};
+
+extern Si46xx_state_en Si46xx_Boot_Tasks(void); // TODO temporär
+
 
 void Si46xx_Tasks(void)
 {
+
+	if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1)
+	{
+		//Si46xx_msg_dt msgTest = {.cmd = SI46XX_GET_SYS_STATE };
+		cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_REFRESH_SYS_STATE]);
+	}
+
+	GPIO_PinState pinDings = HAL_GPIO_ReadPin(Si46xx_INTB_GPIO_Port, Si46xx_INTB_Pin);
+
+	// TODO: INTB-Pin auswerten, später mit Interrupt... geht nicht!! Pulldown an INTB?
+	if(HAL_GPIO_ReadPin(Si46xx_INTB_GPIO_Port, Si46xx_INTB_Pin) == GPIO_PIN_RESET)
+	{
+		Si46xxCfg.isrState = ISR_SET;
+	}
+
 	switch(Si46xxCfg.state)
 	{
 		case Si46xx_STATE_IDLE:
@@ -30,11 +90,46 @@ void Si46xx_Tasks(void)
 			// ISR bringt ihn zurück in Antwort-Auswerten-State, aber dann ist auch eine Auswertefunktion nötig...
 			// vielleicht einfach ein Struct, wo dann die Senden und Antworten-Funktion gepointert werden?
 			// dann eine Aufrufe-Funktion für das jeweilige Feature Si46xx_GetSysState -> Si46xx_Send_GetSysState und Si46xx_Rcv_GetSysState
+			// allgemeinen Reply-Pointer bauen? Also auf die Antwortbytes, dass er die Ablegt? Aber dann müsste er in der allgemeinen Auswertefkt ja wissen, was er damit soll...
+
+			if(cb_pop_front(&Si46xxCfg.cb, &currentWorkingMsg) == CB_OK)
+			{
+				printf("\032[1;36mXXX: liegt auf dem Buffer, länge: %d\032[0m\r\n", Si46xxCfg.cb.count);
+
+				if(currentWorkingMsg.sendFunc() == HAL_OK)
+				{
+					Si46xxCfg.state = Si46xx_STATE_BUSY;
+					Si46xxCfg.isrState = ISR_UNSET;
+				}
+				else // otherwise put it back on stack
+				{
+					cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg);
+				}
+			}
 
 			break;
 
 		case Si46xx_STATE_BOOTING:
-			Si46xx_Boot_Tasks(); // TODO hier dann Rückgabe, wenn er fertig ist
+			if(Si46xx_Boot_Tasks() == Si46xx_STATE_IDLE)
+			{
+				Si46xxCfg.state = Si46xx_STATE_IDLE;
+			}
+			break;
+
+		case Si46xx_STATE_BUSY:
+			if(Si46xxCfg.isrState == ISR_SET)
+			{
+				Si46xxCfg.isrState = ISR_UNSET;
+
+				if(currentWorkingMsg.receiveFunc() == HAL_OK)
+				{
+					Si46xxCfg.state = Si46xx_STATE_IDLE;
+				}
+				else // otherwise put it back on stack
+				{
+					cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg);
+				}
+			}
 			break;
 	}
 }
@@ -63,7 +158,12 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 
 	Si46xxCfg.state = Si46xx_STATE_IDLE;
 
+	// Initialize ring buffer
+	cb_init(&Si46xxCfg.cb, 10, sizeof(Si46xx_msg_dt));
+
 	//Si46xxCfg.timeoutValue = SI46XX_DEFAULT_SPI_WAIT;
+
+	Si46xxCfg.isrState = ISR_UNSET;
 
 	return HAL_OK;
 }

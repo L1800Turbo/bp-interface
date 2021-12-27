@@ -152,6 +152,14 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	//bpMsgState.checkMsgFlg = 1; hier prüfen und oben aktivieren / kopieren?!?
 }
 
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) // Für Blauen Button
+{
+//	if(GPIO_Pin == GPIO_PIN_)
+	{
+
+	}
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -291,7 +299,7 @@ int main(void)
 
 	  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1)
 	  {
-		  HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_RESET); // Reset LOW halten
+		  //HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_RESET); // Reset LOW halten
 	  }
     /* USER CODE END WHILE */
 

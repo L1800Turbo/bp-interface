@@ -12,6 +12,7 @@
 
 #include "stm32f4xx_hal.h"
 #include "main.h"
+#include "circular_buffer.h"
 
 #define SI46XX_DEFAULT_SPI_WAIT 10 // ms, when looping and polling for an SPI ready state from uC or Si46xx
 
@@ -21,7 +22,8 @@
 #define SI46XX_CS_ON()  HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET)
 #define SI46XX_CS_OFF() HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET)
 
-enum Si46xx_commands {
+// Enum for possible SPI commands
+enum Si46xx_SPI_commands {
 	/* Boot commands */
 	SI46XX_RD_REPLY      = 0x00,	/* Returns the status byte and data for the last command sent to the device. 			*/
 	SI46XX_POWER_UP      = 0x01,	/* Power-up the device and set system settings. 										*/
@@ -88,6 +90,18 @@ enum Si46xx_ClockMode_Config {
 	Si46xx_DIFF_BF 	= 0x3 	/* Oscillator is off and circuit acts as differential buffer. 	*/
 };
 
+/* Possible states for SPI command GET_SYS_STATE */
+enum Si46xx_Image {
+	Si46xx_BL   				= 0x0, 	/* Bootloader is active 					*/
+	Si46xx_FMHD					= 0x1, 	/* FMHD is active 							*/
+	Si46xx_DAB					= 0x2, 	/* DAB is active 							*/
+	Si46xx_TDMB_DAB_DATA_ONLY 	= 0x3, 	/* TDMB or data only DAB image is active	*/
+	Si46xx_FMHD_DEMOD			= 0x4, 	/* FMHD demod is active 					*/
+	Si46xx_AMHD					= 0x5, 	/* AMHD is active 							*/
+	Si46xx_AMHD_DEMOD			= 0x6, 	/* AMHD demod is active 					*/
+	Si46xx_DAB_DEMOD			= 0x7 	/* DAB demod is active 						*/
+};
+
 struct Si46xx_Init_Values {
 	enum Si46xx_Switch CTS_InterruptEnable; /* The bootloader will toggle a host interrupt line when CTS is available. */
     enum Si46xx_ClockMode_Config CLK_MODE; /* Choose clock mode. See refclk spec sheet for more information           */
@@ -104,10 +118,34 @@ struct Si46xx_Init_Values {
     							This parameter is only required if using the crystal oscillator. */
 };
 
-enum Si46xx_state_en {
+typedef enum
+{
 	Si46xx_STATE_IDLE = 0,
-	Si46xx_STATE_BOOTING
+	Si46xx_STATE_BOOTING,
+	Si46xx_STATE_BUSY
+}Si46xx_state_en;
+
+
+typedef enum
+{
+	SI46XX_MSG_NONE = 0,
+	SI46XX_MSG_REFRESH_SYS_STATE,
+
+	SI46XX_MSG_SIZE
+}Si46xx_msg_en;
+
+enum Si46xx_ISR_state_en {
+	ISR_SET = 0,
+	ISR_UNSET
 };
+
+typedef struct
+{
+	//enum Si46xx_SPI_commands cmd;
+	HAL_StatusTypeDef (*sendFunc)();
+	HAL_StatusTypeDef (*receiveFunc)();
+
+}Si46xx_msg_dt;
 
 struct Si46xx_Config
 {
@@ -120,11 +158,20 @@ struct Si46xx_Config
 	/* Device status, updated with each SPI status command */
 	Si46xx_Status_Values_dt deviceStatus;
 
-	enum Si46xx_state_en state;
+	/* State of Zustandsautomat */
+	Si46xx_state_en state;
 
 	/* Waiting routines */
 	uint32_t waitStamp;
 	uint32_t waitTime;
+
+	/* State of ISR trigger */
+	enum Si46xx_ISR_state_en isrState;
+
+	/* Ring buffer for messages */
+	circular_buffer cb;
+
+	enum Si46xx_Image image;
 };
 
 enum Si46xx_Wait_en {

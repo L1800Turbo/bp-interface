@@ -71,15 +71,16 @@ Si46xx_BootStates_en getNextBootState(uint8_t * statusData, Si46xx_BootStates_en
  * Si46xx_Boot():
  * Non-blocking function to loop through initialization process
  */
-void Si46xx_Boot_Tasks(void)
+Si46xx_state_en Si46xx_Boot_Tasks(void)
 {
+	Si46xx_state_en retState = Si46xx_STATE_BUSY;
 	Si46xx_BootStates_en tmpState; // Used in Si46xx_INIT_STATE_HOST_LOAD_WAIT
 
 	/* If there is waiting time or SPI isn't ready, don't go into state machine */
 	if(Si46xx_RemainingTimeLeft() == TIME_LEFT || Si46xxCfg.hspi->State != HAL_SPI_STATE_READY)
 	{
 		// TODO: HAL-State auswerten hier und dann unten vereinfachen?
-		return;
+		return retState;
 	}
 
 	switch(bootState)
@@ -315,7 +316,9 @@ void Si46xx_Boot_Tasks(void)
 					{
 						if(Si46xxCfg.deviceStatus.PUP == Si46xx_PUP_APP)
 						{
-							bootState = tmpState;
+							printf("\033[1;36mSi46xx_Boot: Done booting...\033[0m\r\n");
+							//bootState = tmpState;
+							retState = Si46xx_STATE_IDLE; // Idle signalisieren
 						}
 						else
 						{
@@ -342,6 +345,7 @@ void Si46xx_Boot_Tasks(void)
 
 		/* Idle: Boot finished.. TODO: das hier weg und zurück in die Main? */
 		case Si46xx_INIT_STATE_IDLE:
+
 
 			switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, spiBuffer, 4))
 			{
@@ -407,6 +411,8 @@ void Si46xx_Boot_Tasks(void)
 			break;
 
 	}
+
+	return retState;
 }
 
 
