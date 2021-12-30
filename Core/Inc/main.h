@@ -97,6 +97,7 @@ state_flags_t stateFlags;
 #define Si46xx_RSTB_GPIO_Port GPIOE
 #define Si46xx_INTB_Pin GPIO_PIN_6
 #define Si46xx_INTB_GPIO_Port GPIOE
+#define Si46xx_INTB_EXTI_IRQn EXTI9_5_IRQn
 #define PC14_OSC32_IN_Pin GPIO_PIN_14
 #define PC14_OSC32_IN_GPIO_Port GPIOC
 #define PC15_OSC32_OUT_Pin GPIO_PIN_15
@@ -170,5 +171,3 @@ state_flags_t stateFlags;
 #endif
 
 #endif /* __MAIN_H */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

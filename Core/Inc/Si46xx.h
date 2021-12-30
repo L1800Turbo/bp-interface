@@ -25,22 +25,33 @@
 // Enum for possible SPI commands
 enum Si46xx_SPI_commands {
 	/* Boot commands */
-	SI46XX_RD_REPLY      = 0x00,	/* Returns the status byte and data for the last command sent to the device. 			*/
-	SI46XX_POWER_UP      = 0x01,	/* Power-up the device and set system settings. 										*/
-	SI46XX_HOST_LOAD     = 0x04,	/* Loads an image from the HOST over the command interface 								*/
-	SI46XX_FLASH_LOAD    = 0x05, 	/* Loads an image from external FLASH over secondary SPI bus 							*/
-	SI46XX_LOAD_INIT     = 0x06,	/* Prepares the bootloader to receive a new image. 										*/
-	SI46XX_BOOT          = 0x07,	/* Boots the image currently loaded in RAM. 											*/
-	SI46XX_GET_PART_INFO = 0x08,	/* Reports basic information about the device. 											*/
-	SI46XX_GET_SYS_STATE = 0x09,	/* Reports system state information. 													*/
-	SI46XX_GET_POWER_UP_ARGS = 0x0A,/* Reports basic information about the device such as arguments used during POWER_UP. 	*/
+	SI46XX_RD_REPLY      			= 0x00,	/* Returns the status byte and data for the last command sent to the device. 			*/
+	SI46XX_POWER_UP      			= 0x01,	/* Power-up the device and set system settings. 										*/
+	SI46XX_HOST_LOAD     			= 0x04,	/* Loads an image from the HOST over the command interface 								*/
+	SI46XX_FLASH_LOAD    			= 0x05, /* Loads an image from external FLASH over secondary SPI bus 							*/
+	SI46XX_LOAD_INIT     			= 0x06,	/* Prepares the bootloader to receive a new image. 										*/
+	SI46XX_BOOT         			= 0x07,	/* Boots the image currently loaded in RAM. 											*/
+	SI46XX_GET_PART_INFO			= 0x08,	/* Reports basic information about the device. 											*/
+	SI46XX_GET_SYS_STATE			= 0x09,	/* Reports system state information. 													*/
+	SI46XX_GET_POWER_UP_ARGS		= 0x0A,	/* Reports basic information about the device such as arguments used during POWER_UP. 	*/
 
-	SI46XX_SET_PROPERTY  = 0x13,	/* Sets the value of a property.														*/
+	SI46XX_SET_PROPERTY  			= 0x13,	/* Sets the value of a property.														*/
+
+	SI46XX_GET_DIGITAL_SERVICE_LIST	= 0x80,	/*  Gets a service list of the ensemble.    											*/
+
+	SI46XX_DAB_TUNE_FREQ			= 0xB0, /*  Tunes the DAB Receiver to a frequency between 168 MHz and 240 MHz					*/
+
+	SI46XX_GET_FREQ_LIST 			= 0xB9	/* Gets the DAB frequency table  														*/
 };
 
 enum Si46xx_CTS {
 	Si46xx_CTS_NOT_READY = 0,
 	Si46xx_CTS_READY
+};
+
+enum Si46xx_STCINT {
+	Si46xx_STCINT_INCOMPLETE = 0x0,	/* Tune complete has not been triggered. Do not send a new TUNE/SEEK command.    */
+	Si46xx_STCINT_COMPLETE   = 0x1	/* Tune complete has been triggered. It is safe to send a new TUNE/SEEK command. */
 };
 
 enum Si46xx_ERR_REPLY {
@@ -66,6 +77,8 @@ typedef struct
 	 * Therefore, any changes made to the state of CTS by the processor will not affect a serial port transaction that is currently in progress.
 	 */
 	enum Si46xx_CTS CTS;
+	enum Si46xx_STCINT STCINT;		/* Seek/Tune Complete */
+
 	enum Si46xx_ERR_REPLY ERR_CMD;
 	enum Si46xx_PUP_STATE PUP; /* Indicates the powerup state of the system. */
 
@@ -118,6 +131,7 @@ struct Si46xx_Init_Values {
     							This parameter is only required if using the crystal oscillator. */
 };
 
+// Enum for state machine
 typedef enum
 {
 	Si46xx_STATE_IDLE = 0,
@@ -125,11 +139,23 @@ typedef enum
 	Si46xx_STATE_BUSY
 }Si46xx_state_en;
 
+// Enum for SPI status of current function
+typedef enum
+{
+	Si46xx_OK = 0,
+	Si46xx_BUSY,
+	Si46xx_SPI_ERROR,
+	Si46xx_MESSAGE_ERROR,
+	Si46xx_DEVICE_ERROR
+}Si46xx_statusType;
 
 typedef enum
 {
 	SI46XX_MSG_NONE = 0,
 	SI46XX_MSG_REFRESH_SYS_STATE,
+	SI46XX_MSG_GET_DIGITAL_SERVICE_LIST,
+	SI46XX_MSG_DAB_TUNE_FREQ,
+	SI46XX_MSG_GET_FREQ_LIST,
 
 	SI46XX_MSG_SIZE
 }Si46xx_msg_en;
@@ -141,9 +167,9 @@ enum Si46xx_ISR_state_en {
 
 typedef struct
 {
-	//enum Si46xx_SPI_commands cmd;
+	Si46xx_msg_en msgIndex; // Mostly for Debug
 	HAL_StatusTypeDef (*sendFunc)();
-	HAL_StatusTypeDef (*receiveFunc)();
+	Si46xx_statusType (*receiveFunc)();
 
 }Si46xx_msg_dt;
 
@@ -172,6 +198,9 @@ struct Si46xx_Config
 	circular_buffer cb;
 
 	enum Si46xx_Image image;
+
+	/* Values for DAB mode */
+	uint8_t freqIndex;
 };
 
 enum Si46xx_Wait_en {
@@ -184,12 +213,14 @@ const uint8_t Si46xx_Rom00Patch016[5796];
 //const uint8_t Si46xx_Firmware[499760]; // BIF
 const uint8_t Si46xx_Firmware[499356]; // BIN
 
+void set_Si46xx_ISR(void);
 
 void Si46xx_Tasks(void);
 
 HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
 //Si46xx_Status_en Si46xx_getStatus(uint16_t answerBytes, uint8_t * returnDataPtr);
 HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
+//HAL_StatusTypeDef Si46xx_SPIgetAnalyzeStatus(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
 HAL_StatusTypeDef Si46xx_SPIsend(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
 
 void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data);

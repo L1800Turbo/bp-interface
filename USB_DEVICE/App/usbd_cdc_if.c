@@ -278,10 +278,23 @@ uint16_t cdcData[20];
 
 	//extern void Si46xx_ReceiveFW(uint8_t * buffer, uint32_t length);
 	extern void Si46xx_Boot(void);
+	extern void Si46xx_TestFunctions(uint8_t param);
 
 	//if(Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE || Si46xxCfg.state == Si46xx_STATE_LOAD_FIRMWARE_WAIT)
 	//if(Si46xxCfg.firmwareBuf->fwStep != FW_NONE)
-	if(0)
+
+
+	if(Buf[0] == 'b')
+	{
+		Si46xx_Boot();
+	}
+	else
+	{
+		Si46xx_TestFunctions(Buf[0]-0x30);
+	}
+
+
+	/*if(0)
 	{
 		//Si46xx_TransmitFW(Buf, *Len); // TODO: aktuell Blocking
 		//if(Si46xx_GetFW(Buf, *Len) == FWBUF_SIZE)
@@ -297,7 +310,7 @@ uint16_t cdcData[20];
 		{
 			if(Buf[i] == 's') // Startbyte für SPI-Geschichten
 			{
-				Si46xx_Boot();
+			//	Si46xx_Boot();
 				//Si46xx_Send_Reset();
 			}
 			else if(Buf[i] == ' ') // Tabulator 0x09 kann putty über CopyPaste nicht
@@ -348,7 +361,7 @@ uint16_t cdcData[20];
 				cdcData[msg] = (cdcData[msg]<<4) + currNo;
 			}
 		}
-	}
+	}*/
 
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
@@ -383,7 +396,7 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 
 /**
   * @brief  CDC_TransmitCplt_FS
-  *         Data transmited callback
+  *         Data transmitted callback
   *
   *         @note
   *         This function is IN transfer complete callback used to inform user that
@@ -416,5 +429,3 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 /**
   * @}
   */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

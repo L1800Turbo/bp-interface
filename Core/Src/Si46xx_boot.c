@@ -64,7 +64,10 @@ Si46xx_BootStates_en getNextBootState(uint8_t * statusData, Si46xx_BootStates_en
 		return nextState_okay;
 	}
 
-	return nextState_Error; // Als default, wenn gar nichts passt
+	printf("\032[1;36mSi46xx_Boot: Kein sinnvoller nextState, statusData RAW: 0x%X\032[0m\r\n", *statusData);
+	Si46xx_SetWaitTime(100);
+
+	return bootState; // Aktuellen state behalten, loopen
 }
 
 /**
@@ -111,7 +114,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 
 			if(Si46xx_Send_PowerUp() == HAL_OK)
 			{
-				Si46xx_SetWaitTime(50); // ms
+				Si46xx_SetWaitTime(100); // ms TODO erstmal testweise, der rebootet iwie 3x
 				bootState = Si46xx_INIT_STATE_POWER_UP_WAIT;
 			}
 			else

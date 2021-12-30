@@ -56,6 +56,7 @@ void SVC_Handler(void);
 void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
+void EXTI9_5_IRQHandler(void);
 void SPI1_IRQHandler(void);
 void USART2_IRQHandler(void);
 void USART3_IRQHandler(void);
@@ -69,5 +70,3 @@ void OTG_FS_IRQHandler(void);
 #endif
 
 #endif /* __STM32F4xx_IT_H */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

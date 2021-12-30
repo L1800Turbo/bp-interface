@@ -460,7 +460,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			//if(bpCommState == BP_IDLE) // Run actication sequence TODO: und wenn er gerade sendet oder so?
 			if(stateFlags.bpDabActive == bp_DAB_inactive)
 			{
-				uint8_t data[2];
+				//uint8_t data[2];
 
 				/* Prepare to send messages in next step */
 				ringAdd(bpMsgState.writeBuf, bpMessages[BP_MSG_ACK_ACTIVATE]);
@@ -565,8 +565,8 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			msg = buildMessage(0x175, 1, 0x70, buf2, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 
-			sprintf(buf,"0x%02X", buf2[0]);
-			msg = buildTextMessage(buf, BP_DISPLAY_TIMEOUT_DEFAULT);
+			sprintf((char*) buf,"0x%02X", buf2[0]);
+			msg = buildTextMessage((char*) buf, BP_DISPLAY_TIMEOUT_DEFAULT);
 			ringAdd(bpMsgState.writeBuf, msg);
 			setSendWait();
 			break;
@@ -580,7 +580,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 				{
 					buf[j]=cnt++;
 				}
-				msg = buildTextMessage(buf, BP_DISPLAY_TIMEOUT_DEFAULT);
+				msg = buildTextMessage((char*) buf, BP_DISPLAY_TIMEOUT_DEFAULT);
 				ringAdd(bpMsgState.writeBuf, msg);
 			}
 
@@ -643,8 +643,8 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			buf[1] = 0x00;
 			msg = buildMessage(0x175, 2, 0x56, buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
-			sprintf(buf, "N %X", cnt);
-			msg = buildTextMessage(buf, BP_DISPLAY_TIMEOUT_DEFAULT);
+			sprintf((char*) buf, "N %X", cnt);
+			msg = buildTextMessage((char*) buf, BP_DISPLAY_TIMEOUT_DEFAULT);
 			ringAdd(bpMsgState.writeBuf, msg);
 			cnt = cnt*2;
 			setSendWait();
