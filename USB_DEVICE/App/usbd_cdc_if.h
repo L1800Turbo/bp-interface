@@ -49,13 +49,15 @@
   * @{
   */
 /* Define size for the receive and transmit buffer over CDC */
-#define APP_RX_DATA_SIZE  2048
+#define APP_RX_DATA_SIZE  8192
 #define APP_TX_DATA_SIZE  2048
 /* USER CODE BEGIN EXPORTED_DEFINES */
 /* Define size for the receive and transmit buffer over CDC */
 /* It's up to user to redefine and/or remove those define */
-#define APP_RX_DATA_SIZE  2048
+ // Angepasst für SPI-Übertragung mit 4kB-Blöcken
+#define APP_RX_DATA_SIZE  8192
 #define APP_TX_DATA_SIZE  2048
+
 
 /* USER CODE END EXPORTED_DEFINES */
 
@@ -110,9 +112,14 @@ extern USBD_CDC_ItfTypeDef USBD_Interface_fops_FS;
   * @{
   */
 
-uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
+uint8_t CDC_Transmit_FS(uint8_t* Buf, size_t Len);
 
 /* USER CODE BEGIN EXPORTED_FUNCTIONS */
+
+void cdc_Ringbuf_Tasks(void);
+size_t cdc_ringbuf_Rx_getLength(void);
+uint8_t cdc_ringbufRx_get(uint8_t * buf, size_t * Len);
+void cdc_ringbufRx_clear(void);
 
 /* USER CODE END EXPORTED_FUNCTIONS */
 

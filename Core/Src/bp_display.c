@@ -78,7 +78,7 @@ static const menu_entry_dt menuDsc[] = {
 		{.name = "Dummy",   .getValue = dscDummyShow,   .controlEntry = dscDummyControl}
 };
 
-static menu_dt menus[] = { // vom enum bp_menu_en
+static const menu_dt menus[] = { // vom enum bp_menu_en
 		{0,0},
 		{.menuArr = menuDsc, .menuSize = 2},
 	//	{.menuArr = menuVol, .menuSize = 1}
@@ -207,7 +207,7 @@ bp_menu_state_dt setBpMenu(bp_menu_en menu)
 		menu_entry_dt * cMenu = menus[menu].menuArr; // TODO: gefährlich, wenn er eine 0 holt und an Adresse 0 springt!
 
 
-		printf("\033[1;36mMenü auf: %d (%X)\033[0m\r\n", menu, &menu);
+		printf("\033[1;36mMenü auf: %d (%X)\033[0m\r\n", menu, (unsigned int) &menu);
 
 		bpDisplayState.currentMenu = menu;
 		bpDisplayState.currentMenuIndex = 0;

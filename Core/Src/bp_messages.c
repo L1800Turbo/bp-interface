@@ -133,7 +133,7 @@ bp_msg_en findMessage(bp_msg_dt * message)
 
 
 /* Create a custom message (mostly for unknown msgs) */
-bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, uint8_t * data, uint32_t waitMs)
+bp_msg_dt buildMessage(uint16_t address, uint8_t dataLen, uint8_t command, char * data, uint32_t waitMs)
 {
 	bp_msg_dt msg;
 

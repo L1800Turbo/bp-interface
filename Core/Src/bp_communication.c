@@ -537,7 +537,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 		case BP_MSG_BUT_6:
 			buf[0] = 0xFE;
 			buf[1] = 0xFF;
-			msg = buildMessage(0x175, 2, 0x77, buf, 10);
+			msg = buildMessage(0x175, 2, 0x77, (char*) buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 			setSendWait();
 			break;
@@ -545,7 +545,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 		case BP_MSG_BUT_5:
 			buf[0] = 0xFD;
 			buf[1] = 0xFF;
-			msg = buildMessage(0x175, 2, 0x77, buf, 10);
+			msg = buildMessage(0x175, 2, 0x77, (char*) buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 			setSendWait();
 			break;
@@ -562,7 +562,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 
 
 			buf2[0] = 0x00 + (cnt<<4);
-			msg = buildMessage(0x175, 1, 0x70, buf2, 10);
+			msg = buildMessage(0x175, 1, 0x70, (char *) buf2, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 
 			sprintf((char*) buf,"0x%02X", buf2[0]);
@@ -641,7 +641,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 			printf("\033[1;33mSCA gedrückt...\033[0m\r\n");
 			buf[0] = cnt;
 			buf[1] = 0x00;
-			msg = buildMessage(0x175, 2, 0x56, buf, 10);
+			msg = buildMessage(0x175, 2, 0x56, (char *) buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 			sprintf((char*) buf, "N %X", cnt);
 			msg = buildTextMessage((char*) buf, BP_DISPLAY_TIMEOUT_DEFAULT);
@@ -653,7 +653,7 @@ bp_msg_error processBpMsg(bp_msg_dt * message)
 		case BP_MSG_BUT_PS:
 			buf[0] = 0xEF;
 			buf[1] = 0xFF;
-			msg = buildMessage(0x175, 2, 0x57, buf, 10);
+			msg = buildMessage(0x175, 2, 0x57, (char*) buf, 10);
 			ringAdd(bpMsgState.writeBuf, msg);
 			setSendWait();
 			break;

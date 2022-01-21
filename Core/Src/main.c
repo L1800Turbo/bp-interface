@@ -50,7 +50,9 @@ array weiter ausbauen
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "usbd_cdc_if.h"
+#include "usbd_cdc_if.h" // TODO auf dauer raus
+#include "cdc_interface.h"
+
 
 #include "usbd_cdc.h" //test
 
@@ -110,8 +112,15 @@ static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN 0 */
 
 /* Printf for USB CDC */
-int _write(int file, char *ptr, int len)
+int _write(int file, char *ptr, size_t len)
 {
+	if(CDC_Transmit_FS(ptr, len) == USBD_OK)
+	{
+		return len;
+	}
+	return 0;
+
+	/* Alt ohne Ringbuffer...
 	extern USBD_HandleTypeDef hUsbDeviceFS;
 	extern enum bp_comm_state bpCommState;
 
@@ -138,7 +147,7 @@ int _write(int file, char *ptr, int len)
 	
 	CDC_Transmit_FS(buffer, tmpLen+len);
 
-	return len;
+	return len;*/
 }
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
@@ -212,79 +221,8 @@ int main(void)
 */
   uint8_t dummy = 0x55;
   HAL_SPI_Transmit(&hspi1, (uint8_t*) &dummy, 1, 100); // Workaround: zu Beginn ist SCK HIGH, erst danach immer LOW...
-/*
-  while(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 0);
-  HAL_GPIO_WritePin(LED_ORANGE_Port, LED_ORANGE_Pin, GPIO_PIN_SET);
 
-  HAL_Delay(1000);
-  HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_SET); // aus RST raus
-  HAL_Delay(200);
-
-#define SI46XX_POWER_UP 0x01
-#define SI46XX_GET_PART_INFO 0x08
-#define SI46XX_GET_SYS_STATE 0x09
-  uint8_t data[16];
-  uint8_t recData[7];
-
-	data[0] = SI46XX_POWER_UP; // COMMAND
-	data[1] = 0x00; // ARG1 disable CTSIEN
-	data[2] = (1 << 4) | (7 << 0); // ARG2 CLK_MODE=0x1 TR_SIZE=0x7
-	data[3] = 0x48; // ARG3 IBIAS=0x48
-	data[4] = 0x00; // ARG4 XTAL
-	data[5] = 0xF9; // ARG5 XTAL // F8
-	data[6] = 0x24; // ARG6 XTAL
-	data[7] = 0x01; // ARG7 XTAL 19.2MHz
-	data[8] = 0x1F; // ARG8 CTUN
-	data[9] = 0x00 | (1 << 4); // ARG9
-	data[10] = 0x00; // ARG10
-	data[11] = 0x00; // ARG11
-	data[12] = 0x00; // ARG12
-	data[13] = 0x00; // ARG13 IBIAS_RUN
-	data[14] = 0x00; // ARG14
-	data[15] = 0x00; // ARG15
-
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET); // CS an
-	HAL_SPI_Transmit(&hspi1, data, 16, 100);
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET); // CS aus
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET); // CS an
-
-	//memset(data, 0x00, 5*sizeof(uint8_t));
-	//HAL_SPI_Transmit(&hspi1, data, 1, 100);
-	//HAL_SPI_Receive(&hspi1, recData, 4, 100); -> Sendet immer noch Müll, siehe aufgerufene Funktion
-	HAL_SPI_TransmitReceive(&hspi1, zeroes, recData, 5, 100);
-	//while(HAL_SPI_GetState(&hspi1) != HAL_SPI_STATE_READY);
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET); // CS aus
-
-	HAL_Delay(1);
-
-	data[0] = SI46XX_GET_SYS_STATE;
-	data[1] = 0;
-
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET);
-	if(HAL_SPI_Transmit(&hspi1, data, 2, 100) != HAL_OK)
-	{
-		HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_SET);
-	}
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET);
-
-	HAL_Delay(1);
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_RESET);
-
-	data[0] = 0;
-	//HAL_SPI_Transmit(&hspi1, data, 1, 100);
-	//HAL_SPI_Receive(&hspi1, recData, 5, 100); // TODO: einer mehr in der ugreen?!?
-	HAL_SPI_TransmitReceive(&hspi1, zeroes, recData, 6, 100);
-	HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET);
-
-	printf("bla: %X, %X, %X, %X, %X\r\n",
-			recData[1],
-			recData[2],
-			recData[3],
-			recData[4],
-			recData[5]
-		 );*/
-
+  cdc_Interface_Init();
 
   /* USER CODE END 2 */
 
@@ -296,6 +234,8 @@ int main(void)
 	  bpCommTasks();
 
 	  Si46xx_Tasks();
+
+	  cdc_Interface_Tasks();
 
 	  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1)
 	  {

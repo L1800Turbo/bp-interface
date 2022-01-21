@@ -47,7 +47,7 @@ typedef struct{
 
 // ein ganzes Menü
 typedef struct{
-	menu_entry_dt *menuArr;
+	const menu_entry_dt *menuArr;
 	uint8_t menuSize;
 }menu_dt;
 

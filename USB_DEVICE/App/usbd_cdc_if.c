@@ -24,6 +24,8 @@
 
 /* USER CODE BEGIN INCLUDE */
 
+#include "cdc_interface.h"
+
 /* USER CODE END INCLUDE */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -32,8 +34,8 @@
 
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
-uint8_t msg = 0;
-uint16_t cdcData[20];
+//uint8_t msg = 0;
+//uint16_t cdcData[20];
 
 /* USER CODE END PV */
 
@@ -53,6 +55,21 @@ uint16_t cdcData[20];
 
 /* USER CODE BEGIN PRIVATE_TYPES */
 
+/* Ring buffer definitions -------------------------------------------- */
+
+ typedef struct
+ {
+	 uint8_t* buf;
+
+	 uint16_t wr;	// Write index
+	 uint16_t rd;	// Read index
+	 uint16_t lb;	// Overflow index
+ }cdc_ringbuf_dt;
+
+ void cdc_ringbuf_init(cdc_ringbuf_dt * rb, uint8_t * buf);
+ void cdc_ringbuf_clear(cdc_ringbuf_dt * rb);
+ uint16_t cdc_ringbuf_length(cdc_ringbuf_dt * rb);
+
 /* USER CODE END PRIVATE_TYPES */
 
 /**
@@ -65,6 +82,8 @@ uint16_t cdcData[20];
   */
 
 /* USER CODE BEGIN PRIVATE_DEFINES */
+#define RX_BUFFER_MAX_WRITE_INDEX (APP_RX_DATA_SIZE - CDC_DATA_FS_MAX_PACKET_SIZE)
+
 /* USER CODE END PRIVATE_DEFINES */
 
 /**
@@ -97,6 +116,9 @@ uint8_t UserRxBufferFS[APP_RX_DATA_SIZE];
 uint8_t UserTxBufferFS[APP_TX_DATA_SIZE];
 
 /* USER CODE BEGIN PRIVATE_VARIABLES */
+
+cdc_ringbuf_dt cdc_rx_rb;
+cdc_ringbuf_dt cdc_tx_rb;
 
 /* USER CODE END PRIVATE_VARIABLES */
 
@@ -155,6 +177,11 @@ USBD_CDC_ItfTypeDef USBD_Interface_fops_FS =
 static int8_t CDC_Init_FS(void)
 {
   /* USER CODE BEGIN 3 */
+	extern cdc_ringbuf_dt cdc_rx_rb;
+
+	cdc_ringbuf_init(&cdc_rx_rb, UserRxBufferFS);
+	cdc_ringbuf_init(&cdc_tx_rb, UserTxBufferFS);
+
   /* Set Application Buffers */
   USBD_CDC_SetTxBuffer(&hUsbDeviceFS, UserTxBufferFS, 0);
   USBD_CDC_SetRxBuffer(&hUsbDeviceFS, UserRxBufferFS);
@@ -264,14 +291,30 @@ static int8_t CDC_Control_FS(uint8_t cmd, uint8_t* pbuf, uint16_t length)
 static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 {
   /* USER CODE BEGIN 6 */
-	/*
-	 * Muss da oben drüber
-	 * //TODO temporär
-uint8_t msg = 0;
-uint16_t cdcData[20];
 
-	 *  */
+	// Update the write index for the next incoming packet
+	// This function would only be called if there's enough space in the buffer
+	cdc_rx_rb.wr += *Len;
 
+	// Is the new value too close to the end of the FIFO ?
+	if (cdc_rx_rb.wr >= RX_BUFFER_MAX_WRITE_INDEX )
+	{
+		// wrap-around (and save wr as lb)
+		cdc_rx_rb.lb = cdc_rx_rb.wr;
+		cdc_rx_rb.wr = 0;
+	}
+
+	// Tell the driver where to write the next incoming packet
+	// Set pointer to next write index
+	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, cdc_rx_rb.buf + cdc_rx_rb.wr);
+	// Receive the next packet
+	if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
+	{
+		USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+	}
+	return (USBD_OK);
+
+/*
 
 	extern bp_msg_state_dt bpMsgState;
 	extern enum bp_comm_state bpCommState;
@@ -291,7 +334,7 @@ uint16_t cdcData[20];
 	else
 	{
 		Si46xx_TestFunctions(Buf[0]-0x30);
-	}
+	}*/
 
 
 	/*if(0)
@@ -363,9 +406,9 @@ uint16_t cdcData[20];
 		}
 	}*/
 
-  USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
+  /*USBD_CDC_SetRxBuffer(&hUsbDeviceFS, &Buf[0]);
   USBD_CDC_ReceivePacket(&hUsbDeviceFS);
-  return (USBD_OK);
+  return (USBD_OK);*/
   /* USER CODE END 6 */
 }
 
@@ -380,16 +423,62 @@ uint16_t cdcData[20];
   * @param  Len: Number of data to be sent (in bytes)
   * @retval USBD_OK if all operations are OK else USBD_FAIL or USBD_BUSY
   */
-uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
+uint8_t CDC_Transmit_FS(uint8_t* Buf, size_t Len)
 {
-  uint8_t result = USBD_OK;
-  /* USER CODE BEGIN 7 */
+	uint8_t result = USBD_OK;
+	/* USER CODE BEGIN 7 */
+	// aus: https://nefastor.com/microcontrollers/stm32/usb/stm32cube-usb-device-library/communication-device-class/
+
+	//Step 1 : calculate the occupied space in the Tx FIFO
+	int16_t cap = cdc_tx_rb.wr - cdc_tx_rb.rd;   // occupied capacity
+	if (cap < 0)    // FIFO contents wrap around
+	{
+		cap += APP_TX_DATA_SIZE;
+	}
+
+	cap = APP_TX_DATA_SIZE - cap;      // available capacity
+
+	// Step 2 : compare with argument
+	if (cap < Len)
+	{
+		return USBD_BUSY;   // Not enough room to copy "buf" into the FIFO => error
+	}
+
+	// Step 3 : does buf fit in the tail ?
+	int16_t tail = APP_TX_DATA_SIZE - cdc_tx_rb.wr;
+	if (tail >= Len)
+	{
+		// Copy buf into the tail of the FIFO
+		memcpy (&cdc_tx_rb.buf[cdc_tx_rb.wr], Buf, Len);
+
+		// Update "wr" index
+		cdc_tx_rb.wr += Len;
+
+		// In case "len" == "tail", next write goes to the head
+		if (cdc_tx_rb.wr == APP_TX_DATA_SIZE)
+		{
+			cdc_tx_rb.wr = 0;
+		}
+	}
+	else
+	{
+		// Copy the head of "buf" to the tail of the FIFO
+		memcpy (&cdc_tx_rb.buf[cdc_tx_rb.wr], Buf, tail);
+
+		// Copy the tail of "buf" to the head of the FIFO :
+		memcpy (cdc_tx_rb.buf, &Buf[tail], Len - tail);
+
+		// Update the "wr" index
+		cdc_tx_rb.wr = Len - tail;
+	}
+
+  /* Original STM32 HAL
   USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
   if (hcdc->TxState != 0){
     return USBD_BUSY;
   }
   USBD_CDC_SetTxBuffer(&hUsbDeviceFS, Buf, Len);
-  result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);
+  result = USBD_CDC_TransmitPacket(&hUsbDeviceFS);*/
   /* USER CODE END 7 */
   return result;
 }
@@ -419,6 +508,140 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 }
 
 /* USER CODE BEGIN PRIVATE_FUNCTIONS_IMPLEMENTATION */
+
+/**
+ * Initialize a ring buffer
+ *
+ */
+void cdc_ringbuf_init(cdc_ringbuf_dt * rb, uint8_t * buf)
+{
+	rb->buf = buf;
+
+	cdc_ringbuf_clear(rb);
+}
+
+void cdc_ringbuf_clear(cdc_ringbuf_dt * rb)
+{
+	rb->wr = 0;
+	rb->rd = 0;
+	rb->lb = 0;
+}
+
+/**
+ * Get lenth of given fifo
+ */
+uint16_t cdc_ringbuf_length(cdc_ringbuf_dt * rb)
+{
+	int32_t len = rb->wr - rb->rd;
+
+	// If there was a wrap around and write is "in front": add the point where was wrapped
+	if(len < 0)
+	{
+		len += rb->lb;
+	}
+
+	return len;
+}
+
+void cdc_Ringbuf_Tasks(void)
+{
+	/* RX Tasks --------------------------------*/
+	// Check if data on buffer, reactivate USB receive if buffer isn't full
+	if(cdc_ringbuf_length(&cdc_rx_rb) > 0)
+	{
+
+		// TODO: Nur einmal anmachen, gibt es da im HAL etwas, oder einfach einen Switch setzen?
+		// Rerun USB receive if there's enough space on the buffer
+		if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
+		{
+			// Set pointer to next write index
+		//	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, cdc_rx_fifo.buf + cdc_rx_fifo.wr);
+			// Receive the next packet
+			USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+
+			//HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_RESET);
+		}
+		else
+			HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_SET);
+	}
+
+	/* TX Tasks --------------------------------*/
+	USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)hUsbDeviceFS.pClassData;
+
+	// Test if the USB CDC is ready to transmit
+	if (hcdc->TxState == 0)
+	{
+		// Update the FIFO to reflect the completion of the last transmission
+		cdc_tx_rb.rd = cdc_tx_rb.lb;
+
+		// Compute how much data is in the FIFO
+		int16_t cap = cdc_tx_rb.wr - cdc_tx_rb.rd;
+		if (cap != 0)  // The FIFO is empty : return immediately
+		{
+			if (cap < 0)  // The FIFO contents wrap-around
+			{
+				// Send only the tail of the FIFO
+				USBD_CDC_SetTxBuffer(&hUsbDeviceFS, &cdc_tx_rb.buf[cdc_tx_rb.rd], APP_TX_DATA_SIZE - cdc_tx_rb.rd);
+				USBD_CDC_TransmitPacket(&hUsbDeviceFS);
+				cdc_tx_rb.lb = 0;    // Lock the tail’s data
+			}
+			else  // No wrap-around : send the whole FIFO
+			{
+				USBD_CDC_SetTxBuffer(&hUsbDeviceFS, &cdc_tx_rb.buf[cdc_tx_rb.rd], cap);
+				USBD_CDC_TransmitPacket(&hUsbDeviceFS);
+				cdc_tx_rb.lb = cdc_tx_rb.wr; // lock the data
+			}
+		}
+	}
+}
+
+/**
+ * Get the current length of the RX buffer
+ */
+size_t cdc_ringbuf_Rx_getLength(void)
+{
+	return cdc_ringbuf_length(&cdc_rx_rb);
+}
+
+/**
+ * Get data from the buffer
+ * len: Param how many bytes schould be received, also return value how many were available/taken from the buffer
+ */
+uint8_t cdc_ringbufRx_get(uint8_t * buf, size_t * Len)
+{
+	size_t l_len = cdc_ringbuf_length(&cdc_rx_rb);
+
+	// Limit to maximum size available or wanted
+	if(*Len > l_len) // TODO: passt das mit den Sternchen?
+	{
+		*Len = l_len;
+	}
+	else
+	{
+		l_len = *Len;
+	}
+
+	while(l_len)
+	{
+		l_len--;
+
+		// Copy through buffer
+		*buf++ = cdc_rx_rb.buf[cdc_rx_rb.rd++];
+
+		// Reset read pointer when limit reached
+		if(cdc_rx_rb.rd == cdc_rx_rb.lb)
+		{
+			cdc_rx_rb.rd = 0;
+		}
+	}
+
+	return USBD_OK;
+}
+
+void cdc_ringbufRx_clear(void)
+{
+	cdc_ringbuf_clear(&cdc_rx_rb);
+}
 
 /* USER CODE END PRIVATE_FUNCTIONS_IMPLEMENTATION */
 
