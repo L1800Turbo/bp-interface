@@ -1,0 +1,29 @@
+
+
+
+Si-Boot: Host-Load vorbereitet
+Si-Boot: -> firmware über USB?
+Si-Boot: auf FW-Über USB warten, CDC-Botschaft sfile senden und signalisieren, dass FW gewollt ist
+
+PC: sfile auswerten, µC will Firmware
+PC: Datei einlesen, Größe ermitteln
+PC: sfile_dateigröße senden
+
+CDC: sfile auswerten: Größe der Datei ablegen
+
+Hier mit der aktuellen Datei, bzw. dem Rest von unten definiert hin
+|CDC: Größe des nächsten SPI-Blocks ablegen (4092, wenn die Datei größer als 4092 ist) -> cdcBufferLen
+|CDC: auf Datenemfangsmodus, sfile ok bestätigen
+|
+|PC: sfile ok auswerten
+|PC: FW senden beginnen
+|
+|CDC: binäre Daten in CDC-Buffer empfangen
+|
+|Si-Boot: Ist der CDC-Buffer voll genug für den nächsten Block (cdcBufferLen)? Sonst warten
+|Si-Boot: CDC-RingBuffer auf SPI-Buffer kopieren
+|Si-Boot: SPI-Block senden
+|
+|Si-Boot: Datei-Größe - SPI-Block
+|Si-Boot: Sind noch Daten zu senden? Loopen
+        Sonst: Weiter...

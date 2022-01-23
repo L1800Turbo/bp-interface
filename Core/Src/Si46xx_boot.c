@@ -36,7 +36,6 @@ HAL_StatusTypeDef Si46xx_Send_Boot(void);
 // TODO: mehr eine temporäre Geschichte für USB-Befehl ohne Prüfung und so..
 void Si46xx_Boot(void)
 {
-	HAL_GPIO_TogglePin(LED_GREEN_Port, LED_GREEN_Pin);
 	//printf("Setze State ohne Frage auf BOOTING...\r\n"); -> in ISR geht das nicht
 	bootState = Si46xx_INIT_STATE_OFF;
 	Si46xxCfg.state = Si46xx_STATE_BOOTING;
@@ -150,7 +149,7 @@ Si46xx_BootStates_en getNextBootState(uint8_t * statusData, Si46xx_BootStates_en
 		return nextState_okay;
 	}
 
-	printf("\032[1;36mSi46xx_Boot: Kein sinnvoller nextState, statusData RAW: 0x%X\032[0m\r\n", *statusData);
+	printf("Si46xx_Boot: Kein sinnvoller nextState, statusData RAW: 0x%X \n", *statusData);
 	Si46xx_SetWaitTime(100);
 
 	return bootState; // Aktuellen state behalten, loopen
@@ -165,27 +164,6 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 	Si46xx_state_en retState = Si46xx_STATE_BUSY;
 	Si46xx_BootStates_en tmpState; // Used in Si46xx_INIT_STATE_HOST_LOAD_WAIT
 
-	/* If we're waiting for USB packages to have a whole block */
-	/*if(firmware.usbFw_wanted == USB_FW_WAITING)
-	{
-		// If we want to abort this process by reset ...
-		if(bootState == Si46xx_INIT_STATE_OFF)
-		{
-			firmware.usbFw_wanted = USB_FW_NONE;
-			// TODO: im CDC-Modus ggfs. auch resetten...
-		}
-
-		// If there is still a block to fill
-		else if(firmware.fwUsbBufSize > 0) // TODO: unten muss dann defniert werden, wie viel immer übrigt ist und belegt wird
-		{
-			return retState;
-		}
-
-
-
-		// NOTE: State reset should happen when transfer is finished
-	}*/
-
 	/* If there is waiting time or SPI isn't ready, don't go into state machine */
 	if(Si46xx_RemainingTimeLeft() == TIME_LEFT || Si46xxCfg.hspi->State != HAL_SPI_STATE_READY)
 	{
@@ -196,7 +174,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 	switch(bootState)
 	{
 		case Si46xx_INIT_STATE_OFF:
-			printf("\033[1;36mSi46xx_Boot: Si46xx_INIT_STATE_OFF\033[0m\r\n");
+			printf("Si46xx_Boot: Si46xx_INIT_STATE_OFF\n");
 			SI46XX_RST_ON();
 
 			Si46xx_SetWaitTime(10); // Wait 10ms in Reset
@@ -206,7 +184,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 
 		/* Release reset after a mininmum time */
 		case Si46xx_INIT_STATE_RELEASE_RESET:
-			printf("\033[1;36mSi46xx_Boot: Si46xx_INIT_STATE_RELEASE_RESET\033[0m\r\n");
+			printf("Si46xx_Boot: Si46xx_INIT_STATE_RELEASE_RESET\n");
 
 			SI46XX_RST_OFF();
 
@@ -217,7 +195,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 
 		/* Send initialization after reset wait time */
 		case Si46xx_INIT_STATE_POWER_UP_SEND:
-			printf("\033[1;36mSi46xx_Boot: Si46xx_INIT_STATE_POWER_UP_SEND\033[0m\r\n");
+			printf("Si46xx_Boot: Si46xx_INIT_STATE_POWER_UP_SEND\n");
 
 			if(Si46xx_Send_PowerUp() == HAL_OK)
 			{
@@ -231,7 +209,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 			break;
 
 		case Si46xx_INIT_STATE_POWER_UP_WAIT:
-			printf("\033[1;36mSi46xx_Boot: Si46xx_INIT_STATE_POWER_UP_WAIT\033[0m\r\n");
+			printf("Si46xx_Boot: Si46xx_INIT_STATE_POWER_UP_WAIT\n");
 
 			switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, spiBuffer, 4))
 			{
@@ -240,6 +218,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 					bootState = getNextBootState(&spiBuffer[1],
 								Si46xx_INIT_STATE_OFF, Si46xx_INIT_STATE_POWER_UP_SEND, Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND);
 
+					Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
 					firmware.step = FW_BOOTLOADER_PATCH;
 					break;
 
@@ -257,7 +236,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 
 		/* Prepare to load firmware, choose the right buffer */
 		case Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND:
-			printf("\033[1;36mSi46xx_Boot: Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND\033[0m\r\n");
+			printf("Si46xx_Boot: Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND\n");
 
 			switch(Si46xx_Send_LoadInit())
 			{
@@ -314,6 +293,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 			switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, spiBuffer, 4))
 			{
 				case HAL_OK:
+					Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
 					// Get next state depending von Si46xx state
 					bootState = getNextBootState(&spiBuffer[1],
 								Si46xx_INIT_STATE_OFF, Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND, Si46xx_INIT_STATE_HOST_LOAD_SEND);
@@ -369,11 +349,15 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 			switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, spiBuffer, 4))
 			{
 				case HAL_OK:
+					Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
 
 					/* Evaluate next state */
 					if(firmware.fwBufSize > SI46XX_BOOT_MAX_BUF_SIZE) // Still packages to send
 					{
 						firmware.fwBufSize -= SI46XX_BOOT_MAX_BUF_SIZE;
+						printf("Si46xx_boot: remaining fwBufSize %ld \n", firmware.fwBufSize);
+
+						HAL_GPIO_TogglePin(LED_GREEN_Port, LED_GREEN_Pin);
 
 						// Tasks to do on USB transfer
 						if(firmware.fw_source[firmware.step] == FW_SRC_USB)
@@ -410,6 +394,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 						}
 						else // if there are more packages, back to prepare to load the firmware
 						{
+							printf("Si46xx_Boot: More firmware to send\n");
 							Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
 							tmpState = Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND; // Back to prepare command
 						}
@@ -469,9 +454,11 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 					{
 						if(Si46xxCfg.deviceStatus.PUP == Si46xx_PUP_APP)
 						{
-							printf("\033[1;36mSi46xx_Boot: Done booting...\033[0m\r\n");
+							printf("Si46xx_Boot: Done booting...\n");
 							//bootState = tmpState;
 							retState = Si46xx_STATE_IDLE; // Idle signalisieren
+
+							cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_REFRESH_SYS_STATE]);
 						}
 						else
 						{

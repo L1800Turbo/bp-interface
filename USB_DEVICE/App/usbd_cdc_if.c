@@ -64,6 +64,14 @@
 	 uint16_t wr;	// Write index
 	 uint16_t rd;	// Read index
 	 uint16_t lb;	// Overflow index
+
+	 enum bufferStatus_en // Enum to help with reactivating the USB connection after a full buffer
+	 {
+		 BUFFER_FREE = 0,	// Space on the buffer
+		 BUFFER_FULL
+	 }bufferState;
+
+	 //uint32_t tmpCnt; // TODO für tests
  }cdc_ringbuf_dt;
 
  void cdc_ringbuf_init(cdc_ringbuf_dt * rb, uint8_t * buf);
@@ -296,6 +304,8 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	// This function would only be called if there's enough space in the buffer
 	cdc_rx_rb.wr += *Len;
 
+	//cdc_rx_rb.tmpCnt+=*Len; // TODO nur für Tests zählen
+
 	// Is the new value too close to the end of the FIFO ?
 	if (cdc_rx_rb.wr >= RX_BUFFER_MAX_WRITE_INDEX )
 	{
@@ -310,7 +320,12 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	// Receive the next packet
 	if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
 	{
+		cdc_rx_rb.bufferState = BUFFER_FREE;
 		USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+	}
+	else
+	{
+		cdc_rx_rb.bufferState = BUFFER_FULL;
 	}
 	return (USBD_OK);
 
@@ -441,7 +456,7 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, size_t Len)
 	// Step 2 : compare with argument
 	if (cap < Len)
 	{
-		return USBD_BUSY;   // Not enough room to copy "buf" into the FIFO => error
+		return USBD_BUSY;   // Not enough room to copy "buf" into the FIFO => error TODO: ist es dann nicht zu spät?
 	}
 
 	// Step 3 : does buf fit in the tail ?
@@ -516,15 +531,16 @@ static int8_t CDC_TransmitCplt_FS(uint8_t *Buf, uint32_t *Len, uint8_t epnum)
 void cdc_ringbuf_init(cdc_ringbuf_dt * rb, uint8_t * buf)
 {
 	rb->buf = buf;
+	rb->wr = 0;
+	rb->rd = 0;
+	rb->lb = 0;
 
 	cdc_ringbuf_clear(rb);
 }
 
 void cdc_ringbuf_clear(cdc_ringbuf_dt * rb)
 {
-	rb->wr = 0;
-	rb->rd = 0;
-	rb->lb = 0;
+	rb->rd = rb->wr;
 }
 
 /**
@@ -550,19 +566,20 @@ void cdc_Ringbuf_Tasks(void)
 	if(cdc_ringbuf_length(&cdc_rx_rb) > 0)
 	{
 
-		// TODO: Nur einmal anmachen, gibt es da im HAL etwas, oder einfach einen Switch setzen?
-		// Rerun USB receive if there's enough space on the buffer
-		if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
+		// If the buffer was marked as full before
+		if(cdc_rx_rb.bufferState == BUFFER_FULL)
 		{
-			// Set pointer to next write index
-		//	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, cdc_rx_fifo.buf + cdc_rx_fifo.wr);
-			// Receive the next packet
-			USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+			// Is the buffer free in the meantime?
+			if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
+			{
+				cdc_rx_rb.bufferState = BUFFER_FREE;
 
-			//HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_RESET);
+				// Receive the next packet
+				USBD_CDC_ReceivePacket(&hUsbDeviceFS);
+			}
+			else // TODO nur für Tests
+				HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_SET);
 		}
-		else
-			HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_SET);
 	}
 
 	/* TX Tasks --------------------------------*/

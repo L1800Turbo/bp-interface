@@ -69,6 +69,7 @@ typedef enum
 typedef struct
 {
 	Si46xx_msg_en msgIndex; // Mostly for Debug
+	char msgName[40];	// Name of the function for debug and external use
 	HAL_StatusTypeDef (*sendFunc)();
 	Si46xx_statusType (*receiveFunc)();
 

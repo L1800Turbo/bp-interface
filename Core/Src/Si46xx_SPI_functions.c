@@ -28,21 +28,25 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 		{0}, /* SI46XX_MSG_NONE */
 		{
 				.msgIndex    = SI46XX_MSG_REFRESH_SYS_STATE,
+				.msgName	 = "SI46XX_MSG_REFRESH_SYS_STATE",
 				.sendFunc    = Si46xx_Msg_GetSysState_sendFunc,
 				.receiveFunc = Si46xx_Msg_GetSysState_receiveFunc
 		},	/* SI46XX_MSG_REFRESH_SYS_STATE */
 		{
 				.msgIndex    = SI46XX_MSG_GET_DIGITAL_SERVICE_LIST,
+				.msgName	 = "SI46XX_MSG_GET_DIGITAL_SERVICE_LIST",
 				.sendFunc    = Si46xx_Msg_GetDigitalServiceList_sendFunc,
 				.receiveFunc = Si46xx_Msg_GetDigitalServiceList_receiveFunc
 		},  /* SI46XX_MSG_GET_DIGITAL_SERVICE_LIST */
 		{
 				.msgIndex    = SI46XX_MSG_DAB_TUNE_FREQ,
+				.msgName	 = "SI46XX_MSG_DAB_TUNE_FREQ",
 				.sendFunc    = Si46xx_Msg_DABtuneFreq_sendFunc,
 				.receiveFunc = Si46xx_Msg_DABtuneFreq_receiveFunc
 		},  /* SI46XX_MSG_DAB_TUNE_FREQ */
 		{
 				.msgIndex    = SI46XX_MSG_GET_FREQ_LIST,
+				.msgName	 = "SI46XX_MSG_GET_FREQ_LIST",
 				.sendFunc    = Si46xx_Msg_GetFreqList_sendFunc,
 				.receiveFunc = Si46xx_Msg_GetFreqList_receiveFunc
 		}	/* SI46XX_MSG_GET_FREQ_LIST     */
@@ -141,7 +145,7 @@ Si46xx_statusType Si46xx_Msg_GetSysState_receiveFunc()
 
 	Si46xxCfg.image = data[5];
 
-	printf("\033[1;36mSi46xx: Image %d\033[0m\r\n", Si46xxCfg.image);
+	printf("Si46xx: Image %d\n", Si46xxCfg.image);
 
 	return state;
 }
@@ -188,7 +192,7 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 	}
 
 	length = (uint16_t) data[5] + (data[6] << 8);
-	printf("\033[1;36mSi46xx: Size of service list: %d bytes \033[0m\r\n", length);
+	printf("Si46xx: Size of service list: %d bytes \n", length);
 
 	//Si46xxCfg.image = spiBuffer[5];
 
@@ -213,7 +217,7 @@ host command.
 	length = bufPtr[0] + (bufPtr[1] << 8);
 
 	uint8_t numberServices = bufPtr[4];
-	printf("\033[1;36mSi46xx: # of services: %d \033[0m\r\n", numberServices);
+	printf("Si46xx: # of services: %d \n", numberServices);
 
 	uint8_t position = 8; // initial...
 	bufPtr += position;
@@ -228,8 +232,8 @@ host command.
 		memcpy(serviceLabel, &bufPtr[8], 16);
 		serviceLabel[16] = '\0';
 
-		printf("\033[1;36mSi46xx: ServiceID: %lu, Label: %s \033[0m\r\n", serviceID, serviceLabel);
-		printf("\033[1;36mSi46xx: # of components: %d \033[0m\r\n", numberComponents);
+		printf("Si46xx: ServiceID: %lu, Label: %s \n", serviceID, serviceLabel);
+		printf("Si46xx: # of components: %d \n", numberComponents);
 
 		// Jump to components
 		//position += 24;
@@ -243,7 +247,7 @@ host command.
 
 			uint16_t componentID = bufPtr[0] + (bufPtr[1] << 8);
 
-			printf("\033[1;36mSi46xx:       ComponentID: %u\033[0m\r\n", componentID);
+			printf("Si46xx:       ComponentID: %u\n", componentID);
 
 			// Jump to next component in current service block
 			//position += 4;
@@ -311,11 +315,11 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 
 	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_INCOMPLETE)
 	{
-		printf("\033[1;36mSi46xx: Tune not complete... \033[0m\r\n");
+		printf("Si46xx: Tune not complete... \n");
 	}
 	else
 	{
-		printf("\033[1;36mSi46xx: Tune complete! \033[0m\r\n");
+		printf("Si46xx: Tune complete! \n");
 	}
 
 
@@ -356,11 +360,11 @@ Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc()
 	//Si46xxCfg.image = spiBuffer[5];
 
 
-	printf("\033[1;36mSi46xx: Frequencies: %d\033[0m\r\n", data[5]);
+	printf("Si46xx: Frequencies: %d\n", data[5]);
 
 	for(uint8_t i=0x08; i<0xC7; i+=4)
 	{
-		printf("\033[1;36mSi46xx: Freq at %d: %lu \033[0m\r\n", i,
+		printf("Si46xx: Freq at %d: %lu \n", i,
 				(uint32_t) data[i+1]+(data[i+2]<<8)+(data[i+3]<<16)+(data[i+4]<<24));
 	}
 

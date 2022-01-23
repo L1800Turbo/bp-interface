@@ -39,7 +39,7 @@ void cdc_Interface_Tasks(void)
 	if(cdcInterface.fileTransfer_state == CDC_FILE_TRANSFER_ACTIVE)
 	{
 		size_t cdcBufferSize;
-		size_t fwBufferSize;
+		uint32_t fwBufferSize;
 
 		switch(Si46xx_boot_getUSB_fw_state())
 		{
@@ -58,7 +58,10 @@ void cdc_Interface_Tasks(void)
 				{
 					// Show Si46xx Boot state machine that a block is complete
 					Si46xx_boot_setUSB_fw_state(USB_FW_TRANSFERRED);
+
+					//printf("cdc-interface: Block size %d >= %ld, Block transferred\n", cdcBufferSize, fwBufferSize);
 				}
+				// TODO: Timeout einbauen, der sich immer zurücksetzt, wenn ein neuer Block rein kommt
 
 				break;
 
@@ -131,14 +134,28 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			CDC_Transmit_FS((uint8_t*) "\n", 1);
 		}
 
+		// get a list of possible commands to run directly
+		else if(strncmp(messageStr, "scmd_list", 9) == 0)
+		{
+			printf("scmd_list_");
+
+			for(Si46xx_msg_en i=0; i < SI46XX_MSG_SIZE; i++)
+			{
+				printf("%d;%s#", i, Si46xx_messages[i].msgName);
+			}
+
+			printf("\n");
+		}
+
 		// Run a command directly
 		else if(strncmp(messageStr, "scmd", 4) == 0)
 		{
 			uint8_t cmdIndex = atoi(&messageStr[4]);
 
 			//printf("cmdIndex %d", cmdIndex);
-			if(cmdIndex < SI46XX_MSG_SIZE)
+			if(cmdIndex > 0 && cmdIndex < SI46XX_MSG_SIZE)
 			{
+				printf("Got command index %d\n", cmdIndex);
 				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[cmdIndex]); //SI46XX_MSG_REFRESH_SYS_STATE z.B. 1
 			}
 		}

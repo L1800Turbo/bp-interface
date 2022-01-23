@@ -75,15 +75,23 @@ void Si46xx_Tasks(void)
 			{
 				printf("Si46xx: Befehl liegt auf dem Stack... (count: %d)\n", Si46xxCfg.cb.count);
 
-				if(currentWorkingMsg.sendFunc() == HAL_OK)
+				switch(currentWorkingMsg.sendFunc())
 				{
-					Si46xxCfg.state = Si46xx_STATE_BUSY;
-					Si46xxCfg.isrState = ISR_UNSET;
-				}
-				else // otherwise put it back on stack
-				{
-					cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg);
-					Si46xx_SetWaitTime(100);
+					case HAL_OK:
+						Si46xxCfg.state = Si46xx_STATE_BUSY;
+						Si46xxCfg.isrState = ISR_UNSET;
+						break;
+
+					case HAL_ERROR:
+						printf("Si46xx: SPI-Error in Sending function!\n");
+						break;
+
+					case HAL_BUSY:
+					case HAL_TIMEOUT:
+						cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg);
+						Si46xx_SetWaitTime(100);
+
+						break;
 				}
 			}
 
@@ -219,7 +227,7 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 				deviceStatus->ERRNR  == Si46xx_ERR_ERROR    /* Fatal error has occurred. The only way to recover is for the user to reset the chip.*/
 			)
 			{
-				printf("\032[1;36mSi46xx: IC Error\032[0m\r\n");
+				printf("Si46xx: IC Error\n");
 				return Si46xx_DEVICE_ERROR;
 			}
 
@@ -229,7 +237,7 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 					deviceStatus->REPOFERR == Si46xx_ERR_ERROR    /* The reply interface has underflowed, and bad data has been returned to the user */
 			)
 			{
-				printf("\032[1;36mSi46xx_Boot: Message Error\032[0m\r\n");
+				printf("Si46xx_Boot: Message Error\n");
 				return Si46xx_MESSAGE_ERROR;
 			}
 
