@@ -127,11 +127,11 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		// Get state of Si46xx
 		if(strncmp(messageStr, "sst", 3) == 0)
 		{
-
-			CDC_Transmit_FS((uint8_t *) "sst ", 4);
-			CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
-			CDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
-			CDC_Transmit_FS((uint8_t*) "\n", 1);
+			cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_REFRESH_SYS_STATE]);
+			//CDC_Transmit_FS((uint8_t *) "sst ", 4);
+			//CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
+			//CDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
+			//CDC_Transmit_FS((uint8_t*) "\n", 1);
 		}
 
 		// get a list of possible commands to run directly
@@ -175,6 +175,30 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			// TODO temporär, eine firmware protected get function bauen...
 			extern Si46xx_firmware_dt firmware;
 			printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]);
+		}
+
+		// Tune to a frequency, refresh the contents of it: stune_n
+		else if(strncmp(messageStr, "stune", 5) == 0)
+		{
+			enum DAB_frequencies channelIndex = atoi(&messageStr[6]);
+
+			// Check if channel param was valid
+			if(channelIndex >= 0 && channelIndex < DAB_Chan_SIZE)
+			{
+				Si46xxCfg.freqIndex = channelIndex;
+
+				printf("Si46xx: Tuning to channel index %d: %s\n", channelIndex, DAB_frequency_list[channelIndex].name);
+
+				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_DAB_TUNE_FREQ]);
+				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_GET_DIGITAL_SERVICE_LIST]);
+			}
+
+			// TODO: Frequenz einstellen -> Tunen auf Frequenz -> Infos holen
+			// Channel zurückgeben, wenn getunt
+			// Wenn tunen nicht geht, abbrechen (msg-Stack leeren?)
+			// Irgendwo ein Flag zur Frequenz setzen, dass die nicht tunebar ist...
+			// Bei Tunen auf Frequenz würde dann ein Timeout benötigt, der sich darum kümmert
+
 		}
 
 		else if(strncmp(messageStr, "sboot", 5) == 0)

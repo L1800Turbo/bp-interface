@@ -15,6 +15,8 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc();
 Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_SetFreqList_sendFunc();
+Si46xx_statusType Si46xx_Msg_SetFreqList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetFreqList_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc();
 
@@ -44,6 +46,12 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.sendFunc    = Si46xx_Msg_DABtuneFreq_sendFunc,
 				.receiveFunc = Si46xx_Msg_DABtuneFreq_receiveFunc
 		},  /* SI46XX_MSG_DAB_TUNE_FREQ */
+		{
+				.msgIndex	 = SI46xx_MSG_SET_FREQ_LIST,
+				.msgName	 = "SI46xx_MSG_SET_FREQ_LIST",
+				.sendFunc	 = Si46xx_Msg_SetFreqList_sendFunc,
+				.receiveFunc = Si46xx_Msg_SetFreqList_receiveFunc
+		},	/* SI46xx_MSG_SET_FREQ_LIST */
 		{
 				.msgIndex    = SI46XX_MSG_GET_FREQ_LIST,
 				.msgName	 = "SI46XX_MSG_GET_FREQ_LIST",
@@ -145,7 +153,8 @@ Si46xx_statusType Si46xx_Msg_GetSysState_receiveFunc()
 
 	Si46xxCfg.image = data[5];
 
-	printf("Si46xx: Image %d\n", Si46xxCfg.image);
+	//printf("Si46xx: Image %d\n", Si46xxCfg.image);
+	printf("ssys_%d\n", Si46xxCfg.image);
 
 	return state;
 }
@@ -181,7 +190,8 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc()
 
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 {
-	uint8_t data[7];
+	//uint8_t data[7]; // TODO 7, temporär festgelegt, was ist der maximale Wert hier?
+	uint8_t * data =spiBuffer;
 
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 6);
 	uint16_t length = 0;
@@ -202,6 +212,10 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 	{
 		return state;
 	}
+
+	// Send message for debug
+	printf("sSrvList_%d\n", 6+length);
+	CDC_Transmit_FS(data, 6+length);
 
 	/* TODO: Digitale Serviceliste auswerten:
 	 * 8.5
@@ -227,12 +241,45 @@ host command.
 	{
 
 		uint32_t serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
+		uint8_t pdFlag = bufPtr[4] & 0x01;
+
+		struct serviceID_P // P/D=0
+		{
+			uint16_t SRV_REF:12;
+			uint8_t CountryID:4;
+			uint16_t RFU;
+		};
+
+		struct serviceID_D // P/D=1
+		{
+			uint32_t SRV_REF:20;
+			uint8_t CountyID:4;
+			uint8_t ECC;
+		};
+
 		uint8_t numberComponents = bufPtr[5] & 0x0F;
 		char serviceLabel[16+1];
 		memcpy(serviceLabel, &bufPtr[8], 16);
 		serviceLabel[16] = '\0';
 
-		printf("Si46xx: ServiceID: %lu, Label: %s \n", serviceID, serviceLabel);
+		printf("Si46xx: ServiceID: %lX, P/D: %d, Label: %s \n", serviceID, pdFlag, serviceLabel);
+
+		struct serviceID_P * srvID_P;
+		struct serviceID_D * srvID_D;
+
+		switch(pdFlag)
+		{
+			case 0:
+				srvID_P = (struct serviceID_P*) &serviceID;
+				printf("Si46xx: SRV_REF: %X CountryID: %d\n", srvID_P->SRV_REF, srvID_P->CountryID);
+				break;
+
+			case 1:
+				srvID_D = (struct serviceID_D*) &serviceID;
+				printf("Si46xx: SRV_REF: %X CountryID: %d, ECC: %X\n", srvID_D->SRV_REF, srvID_D->CountyID, srvID_D->ECC);
+				break;
+		}
+
 		printf("Si46xx: # of components: %d \n", numberComponents);
 
 		// Jump to components
@@ -245,9 +292,27 @@ host command.
 			// Adjust pointer to current component
 			//bufPtr += position;
 
-			uint16_t componentID = bufPtr[0] + (bufPtr[1] << 8);
+			uint8_t tmID = bufPtr[1] >> 6;
+			uint16_t componentID = 0;
 
-			printf("Si46xx:       ComponentID: %u\n", componentID);
+			switch(tmID) // Component ID depends on the TM ID
+			{
+				case 0: // TMId=00 (MSC stream audio)
+				case 1: // TMId=01 (MSC stream data)
+				case 2: // TMId=10 (Reserved)
+					componentID = bufPtr[0] & 0x3F;
+					break;
+
+				case 3: // TMId=11 (MSC packet data)
+					componentID = bufPtr[0] + ((bufPtr[1] & 0x0F) << 8);
+					// DGFlag is on Bit 13
+					break;
+			}
+
+			uint8_t ascTy_dscTy = bufPtr[2] >> 2;
+
+
+			printf("Si46xx:      TMId: %X, ComponentID: %X, ASCTy/DSCTy: %d\n", tmID, componentID, ascTy_dscTy);
 
 			// Jump to next component in current service block
 			//position += 4;
@@ -263,6 +328,9 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 {
 	uint8_t data[6];
 	HAL_StatusTypeDef state = HAL_BUSY;
+
+	// TODO erst nur als Test üfr 5C
+	//Si46xxCfg.freqIndex = DAB_Chan_5C;
 
 	// Check configuration
 	if(Si46xxCfg.freqIndex > 47)
@@ -326,6 +394,51 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 	return state;
 }
 
+//SI46xx_MSG_SET_FREQ_LIST
+HAL_StatusTypeDef Si46xx_Msg_SetFreqList_sendFunc() // TODO: Muss getestet werden!
+{
+	uint8_t data[196] = {0,};
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0] = SI46XX_SET_FREQ_LIST;
+		data[1] = (DAB_Chan_SIZE & 0xFF);
+		data[2] = 0; // Normal guaranteed tuning range 168 MHz to 240 MHz
+		data[3] = 0;
+
+		for(uint8_t i=0, j=0; i<DAB_Chan_SIZE; i++, j+=4)
+		{
+			data[4+j+0] = (DAB_frequency_list[i].freq & 0x000000FF) >>  0;
+			data[4+j+1] = (DAB_frequency_list[i].freq & 0x0000FF00) >>  8;
+			data[4+j+2] = (DAB_frequency_list[i].freq & 0x00FF0000) >> 16;
+			data[4+j+3] = (DAB_frequency_list[i].freq & 0xFF000000) >> 24;
+
+			if(i>47) // maximum for list
+			{
+				break;
+			}
+		}
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, sizeof(data));
+
+		// Reset list status as we need to check it afterwards
+		Si46xxCfg.freqencyListStatus = FREQ_LIST_INVALID;
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_SetFreqList_receiveFunc()
+{
+	// TODO: das ist eigentlich eine generische Funktion, wie auch DABtuneFreq
+	uint8_t data[5];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 4);
+
+	return state;
+}
+
 
 // SI46XX_MSG_GET_FREQ_LIST
 HAL_StatusTypeDef Si46xx_Msg_GetFreqList_sendFunc()
@@ -350,6 +463,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetFreqList_sendFunc()
 Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc()
 {
 	uint8_t data[201];
+	uint8_t * dataPtr;
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 200);
 
 	if(state != Si46xx_OK)
@@ -357,16 +471,40 @@ Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc()
 		return state;
 	}
 
-	//Si46xxCfg.image = spiBuffer[5];
-
-
 	printf("Si46xx: Frequencies: %d\n", data[5]);
 
-	for(uint8_t i=0x08; i<0xC7; i+=4)
+	dataPtr = data + 9;
+
+	// Set frequency list status to valid, reset it to invalid if it doesn't match
+	Si46xxCfg.freqencyListStatus = FREQ_LIST_VALID;
+
+	for(uint8_t i=0, j=0; i<DAB_Chan_SIZE; i++, j+=4)
+	{
+		// saved frequency at current point
+		uint32_t currentSpiFreq = (uint32_t) dataPtr[j]+(dataPtr[j+1]<<8)+(dataPtr[j+2]<<16)+(dataPtr[j+3]<<24);
+
+		if(DAB_frequency_list[i].freq != currentSpiFreq)
+		{
+			printf("Si46xx_Msg_GetFreqList_receiveFuncFrequencies index %d doesn't match!\n", i);
+
+			Si46xxCfg.freqencyListStatus = FREQ_LIST_INVALID;
+			break;
+		}
+	}
+
+	// Transmit frequency list to terminal if valid
+	if(Si46xxCfg.freqencyListStatus == FREQ_LIST_VALID)
+	{
+		// Send frequency list
+		printf("sFreqList_%d\n", sizeof(DAB_frequency_list));
+		CDC_Transmit_FS(DAB_frequency_list, sizeof(DAB_frequency_list));
+	}
+
+	/*for(uint8_t i=0x08; i<0xC7; i+=4)
 	{
 		printf("Si46xx: Freq at %d: %lu \n", i,
 				(uint32_t) data[i+1]+(data[i+2]<<8)+(data[i+3]<<16)+(data[i+4]<<24));
-	}
+	}*/
 
 	return state;
 }

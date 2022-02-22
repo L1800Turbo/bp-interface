@@ -9,6 +9,7 @@
  */
 #include "Si46xx.h"
 
+
 struct Si46xx_Config Si46xxCfg;
 
 Si46xx_msg_dt currentWorkingMsg;
@@ -88,7 +89,7 @@ void Si46xx_Tasks(void)
 
 					case HAL_BUSY:
 					case HAL_TIMEOUT:
-						cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg);
+						cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // TODO: eine aktuell beschäftigte Funktion sollte am Anfang bleiben!
 						Si46xx_SetWaitTime(100);
 
 						break;
@@ -173,6 +174,9 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	// Configure default sources for firmware/patch
 	Si46xx_Boot_SetSources(FW_SRC_UC, FW_SRC_UC);
 
+	// Init first channel TODO später vom EEPROM?
+	Si46xxCfg.freqIndex = 0;
+
 	return HAL_OK;
 }
 
@@ -214,6 +218,19 @@ HAL_StatusTypeDef Si46xx_Send_GetSysState(void) // TODO weg
 Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 {
 	Si46xx_Status_Values_dt * deviceStatus = &Si46xxCfg.deviceStatus;
+
+	CDC_Transmit_FS((uint8_t *) "sst ", 4);
+	CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
+	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
+	CDC_Transmit_FS((uint8_t*) "\n", 1);
+
+	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE)
+	{
+		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
+		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
+	}
+
+	//printf("sst_%d\n",  Si46xxCfg.deviceStatus);
 
 	switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, len))
 	{

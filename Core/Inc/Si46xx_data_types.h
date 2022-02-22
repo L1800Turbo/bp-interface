@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
+#include "Si46xx_DAB_frequencies.h"
 #include "circular_buffer.h"
 
 /* SPI states ---------------------------------------------------------------------------- */
@@ -116,6 +117,11 @@ struct Si46xx_Init_Values {
 
 /* DAB states ---------------------------------------------------------------------------- */
 
+typedef struct // Struct for a frequency and channel
+{
+	enum DAB_frequencies channel;	// Channel with the according frequency
+}dab_channel_dt;
+
 // TODO hier dann service kram und so hin
 
 
@@ -160,7 +166,10 @@ struct Si46xx_Config
 
 	/* Values for DAB mode */
 	enum Si46xx_Image image;
-	uint8_t freqIndex;
+
+	/* Frequency parameters */
+	enum Si46xx_frequencyList_status {FREQ_LIST_INVALID, FREQ_LIST_VALID} freqencyListStatus;
+	enum DAB_frequencies freqIndex;
 };
 
 #endif /* INC_SI46XX_DATA_TYPES_H_ */
