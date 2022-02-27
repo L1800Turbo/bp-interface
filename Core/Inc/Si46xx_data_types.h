@@ -170,6 +170,13 @@ struct Si46xx_Config
 	/* Frequency parameters */
 	enum Si46xx_frequencyList_status {FREQ_LIST_INVALID, FREQ_LIST_VALID} freqencyListStatus;
 	enum DAB_frequencies freqIndex;
+
+	struct wantedService
+	{
+		uint32_t serviceID;
+		uint32_t componentID;
+	}wantedService;
+
 };
 
 #endif /* INC_SI46XX_DATA_TYPES_H_ */

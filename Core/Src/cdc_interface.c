@@ -201,6 +201,26 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 
 		}
 
+		// Selecting a service and component
+		else if(strncmp(messageStr, "sStartSrv", 9) == 0)
+		{
+			printf("Si46xx: sStartSrv called...\n");
+
+			// TODO: Das darf nicht binär kommen 0D ist z.B. ein \r
+
+			uint32_t serviceID   = messageStr[10] + (messageStr[11] << 8) + (messageStr[12] << 16) + (messageStr[13] << 24);
+			uint32_t componentID = messageStr[14] + (messageStr[15] << 8) + (messageStr[16] << 16) + (messageStr[17] << 24);
+
+			if(serviceID > 0 && componentID > 0) // TODO: Kanäle sinnvoll prüfen
+			{
+				Si46xxCfg.wantedService.serviceID   = serviceID;
+				Si46xxCfg.wantedService.componentID = componentID;
+
+				printf("Si46xx: Selected serviceID %lu, componentID: %lu \n", serviceID, componentID);
+			}
+
+		}
+
 		else if(strncmp(messageStr, "sboot", 5) == 0)
 		{
 			// TODO: Temporäte Lösung

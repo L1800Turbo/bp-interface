@@ -38,7 +38,10 @@ enum Si46xx_SPI_commands {
 
 	SI46XX_SET_PROPERTY  			= 0x13,	/* Sets the value of a property.														*/
 
-	SI46XX_GET_DIGITAL_SERVICE_LIST	= 0x80,	/*  Gets a service list of the ensemble.    											*/
+	SI46XX_GET_DIGITAL_SERVICE_LIST	= 0x80,	/* Gets a service list of the ensemble.	    											*/
+	SI46XX_START_DIGITAL_SERVICE	= 0x81, /* Starts an audio or data service. 													*/
+	SI46XX_STOP_DIGITAL_SERVICE		= 0x82, /* Stops an audio or data service.														*/
+	SI46XX_GET_DIGITAL_SERVICE_DATA = 0x84,	/* Gets a block of data associated with one of the enabled data components of a digital services. */
 
 	SI46XX_DAB_TUNE_FREQ			= 0xB0, /*  Tunes the DAB Receiver to a frequency between 168 MHz and 240 MHz					*/
 	SI46XX_SET_FREQ_LIST			= 0xB8, /*  Sets the DAB frequency table. The frequencies are in units of kHz. */
@@ -51,6 +54,9 @@ typedef enum
 	SI46XX_MSG_REFRESH_SYS_STATE,
 	SI46XX_MSG_GET_DIGITAL_SERVICE_LIST,
 	SI46XX_MSG_DAB_TUNE_FREQ,
+	SI46XX_MSG_START_DIGITAL_SERVICE,
+	SI46XX_MSG_STOP_DIGITAL_SERVICE,
+	SI46XX_MSG_GET_DIGITAL_SERVICE_DATA,
 	SI46xx_MSG_SET_FREQ_LIST,
 	SI46XX_MSG_GET_FREQ_LIST,
 

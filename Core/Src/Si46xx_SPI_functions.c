@@ -15,6 +15,12 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc();
 Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_StartDigitalService_sendFunc();
+Si46xx_statusType Si46xx_Msg_StartDigitalService_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc();
+Si46xx_statusType Si46xx_Msg_StopDigitalService_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc();
+Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_SetFreqList_sendFunc();
 Si46xx_statusType Si46xx_Msg_SetFreqList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetFreqList_sendFunc();
@@ -46,6 +52,24 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.sendFunc    = Si46xx_Msg_DABtuneFreq_sendFunc,
 				.receiveFunc = Si46xx_Msg_DABtuneFreq_receiveFunc
 		},  /* SI46XX_MSG_DAB_TUNE_FREQ */
+		{
+				.msgIndex    = SI46XX_MSG_START_DIGITAL_SERVICE,
+				.msgName	 = "SI46XX_MSG_START_DIGITAL_SERVICE",
+				.sendFunc    = Si46xx_Msg_StartDigitalService_sendFunc,
+				.receiveFunc = Si46xx_Msg_StartDigitalService_receiveFunc
+		},  /* SI46XX_MSG_START_DIGITAL_SERVICE */
+		{
+				.msgIndex    = SI46XX_MSG_STOP_DIGITAL_SERVICE,
+				.msgName	 = "SI46XX_MSG_STOP_DIGITAL_SERVICE",
+				.sendFunc    = Si46xx_Msg_StopDigitalService_sendFunc,
+				.receiveFunc = Si46xx_Msg_StopDigitalService_receiveFunc
+		},  /* SI46XX_MSG_STOP_DIGITAL_SERVICE */
+		{
+				.msgIndex    = SI46XX_MSG_GET_DIGITAL_SERVICE_DATA,
+				.msgName	 = "SI46XX_MSG_GET_DIGITAL_SERVICE_DATA",
+				.sendFunc    = Si46xx_Msg_GetDigitalServiceData_sendFunc,
+				.receiveFunc = Si46xx_Msg_GetDigitalServiceData_receiveFunc
+		},  /* SI46XX_MSG_GET_DIGITAL_SERVICE_DATA */
 		{
 				.msgIndex	 = SI46xx_MSG_SET_FREQ_LIST,
 				.msgName	 = "SI46xx_MSG_SET_FREQ_LIST",
@@ -191,7 +215,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc()
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 {
 	//uint8_t data[7]; // TODO 7, temporär festgelegt, was ist der maximale Wert hier?
-	uint8_t * data =spiBuffer;
+	uint8_t * data = spiBuffer;
 
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 6);
 	uint16_t length = 0;
@@ -226,6 +250,8 @@ done using the GET_DIGITAL_SERVICE_LIST host command. The service list definitio
 host command.
 	 *
 	 */
+
+	// TODO: In richtige Liste einbauen, damit man das später auch abrufen kann... Zunächst mit fixer Svc/Cmp-Listenbreite?
 
 	uint8_t * bufPtr = data + 5; // Point to List Size
 	length = bufPtr[0] + (bufPtr[1] << 8);
@@ -329,7 +355,7 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 	uint8_t data[6];
 	HAL_StatusTypeDef state = HAL_BUSY;
 
-	// TODO erst nur als Test üfr 5C
+	// freqIndex needs to be defined to a channel first
 	//Si46xxCfg.freqIndex = DAB_Chan_5C;
 
 	// Check configuration
@@ -338,7 +364,7 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 		return HAL_ERROR;
 	}
 
-	Si46xxCfg.deviceStatus.STCINT = Si46xx_STCINT_COMPLETE; // für den ersten... TODO
+	Si46xxCfg.deviceStatus.STCINT = Si46xx_STCINT_COMPLETE; // für den ersten... TODO ist das noch nötig?
 
 	// No other tuning should be running
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY  && Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE)
@@ -381,7 +407,7 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 
 	//Si46xxCfg.image = spiBuffer[5];
 
-	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_INCOMPLETE)
+	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_INCOMPLETE) // TODO: Hier zu fragen ist nutzlos, kurz nach aufrufen ist tuning ja nicht durch
 	{
 		printf("Si46xx: Tune not complete... \n");
 	}
@@ -393,6 +419,139 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 
 	return state;
 }
+
+// SI46XX_MSG_START_DIGITAL_SERVICE
+/* START_DIGITAL_SERVICE starts an audio or data service.
+ * This command is used for DAB audio and data services. To determine what services exist in an ensemble please use the GET_DIGITAL_SERVICE_LIST command.
+ * In the case of starting an audio service, it is not required to stop a currently running audio service/program before starting a new one.
+ * The currently running audio service will be stopped automatically when the new service is requested.
+ */
+HAL_StatusTypeDef Si46xx_Msg_StartDigitalService_sendFunc()
+{
+	uint8_t data[0xC];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	if(Si46xxCfg.wantedService.serviceID == 0 || Si46xxCfg.wantedService.componentID == 0)
+	{
+		state = HAL_ERROR;
+		return state;
+	}
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0x0] = SI46XX_START_DIGITAL_SERVICE;
+		data[0x1] = 0x00;
+		data[0x2] = 0x00;
+		data[0x3] = 0x00;
+
+		data[0x4] = (Si46xxCfg.wantedService.serviceID & 0x000000FF) >>  0;
+		data[0x5] = (Si46xxCfg.wantedService.serviceID & 0x0000FF00) >>  8;
+		data[0x6] = (Si46xxCfg.wantedService.serviceID & 0x00FF0000) >> 16;
+		data[0x7] = (Si46xxCfg.wantedService.serviceID & 0xFF000000) >> 24;
+
+		data[0x8] = (Si46xxCfg.wantedService.componentID & 0x000000FF) >>  0;
+		data[0x9] = (Si46xxCfg.wantedService.componentID & 0x0000FF00) >>  8;
+		data[0xA] = (Si46xxCfg.wantedService.componentID & 0x00FF0000) >> 16;
+		data[0xB] = (Si46xxCfg.wantedService.componentID & 0xFF000000) >> 24;
+
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 0xC);
+
+		printf("Si46xx: Starting digital service...\n");
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_StartDigitalService_receiveFunc()
+{
+	// TODO: das ist eigentlich eine generische Funktion, wie auch DABtuneFreq
+	uint8_t data[5];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 4);
+
+	return state;
+}
+
+// SI46XX_MSG_STOP_DIGITAL_SERVICE
+HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc()
+{
+	uint8_t data[0xC];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0x0] = SI46XX_STOP_DIGITAL_SERVICE;
+		data[0x1] = 0x00;
+		data[0x2] = 0x00;
+		data[0x3] = 0x00;
+
+		data[0x4] = (Si46xxCfg.wantedService.serviceID & 0x000000FF) >>  0;
+		data[0x5] = (Si46xxCfg.wantedService.serviceID & 0x0000FF00) >>  8;
+		data[0x6] = (Si46xxCfg.wantedService.serviceID & 0x00FF0000) >> 16;
+		data[0x7] = (Si46xxCfg.wantedService.serviceID & 0xFF000000) >> 24;
+
+		data[0x8] = (Si46xxCfg.wantedService.componentID & 0x000000FF) >>  0;
+		data[0x9] = (Si46xxCfg.wantedService.componentID & 0x0000FF00) >>  8;
+		data[0xA] = (Si46xxCfg.wantedService.componentID & 0x00FF0000) >> 16;
+		data[0xB] = (Si46xxCfg.wantedService.componentID & 0xFF000000) >> 24;
+
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 0xC);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_StopDigitalService_receiveFunc()
+{
+	// TODO: das ist eigentlich eine generische Funktion, wie auch DABtuneFreq
+	uint8_t data[5];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 4);
+
+	return state;
+}
+
+//SI46XX_MSG_GET_DIGITAL_SERVICE_DATA
+HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	enum statusOnly
+	{
+		STATUS_NORMAL = 0x0, /* Return everything */
+		STATUS_POLL   = 0x1  /* Only return interrupt source and available buffers information */
+	}GetDigitalServiceData_StatusOnly;
+
+	enum ACK
+	{
+		DONT_ACK	= 0x0,	/* Don't acknowledge the interrupt	*/
+		ACK			= 0x1	/* Acknowledging the interrupt will clear the DSRVINT bit and the interrupt source bits. */
+	}GetDigitalServiceData_ACK;
+
+	GetDigitalServiceData_StatusOnly = STATUS_NORMAL;
+	GetDigitalServiceData_ACK		 = ACK;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0] = SI46XX_GET_DIGITAL_SERVICE_DATA;
+		data[1] = (GetDigitalServiceData_StatusOnly << 4) | GetDigitalServiceData_ACK;
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+
+		// As maximum wait time:
+		//Si46xx_SetWaitTime(100); // TODO Timeout und so... muss eine andere Funktion gebaut werden
+	}
+
+	return state;
+}
+
+// TODO: hier ist noch gar nichts fertig!!
+Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc()
+{
+	return Si46xx_OK;
+}
+
 
 //SI46xx_MSG_SET_FREQ_LIST
 HAL_StatusTypeDef Si46xx_Msg_SetFreqList_sendFunc() // TODO: Muss getestet werden!

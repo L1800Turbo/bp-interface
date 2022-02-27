@@ -217,18 +217,8 @@ HAL_StatusTypeDef Si46xx_Send_GetSysState(void) // TODO weg
  */
 Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 {
+	Si46xx_statusType status = Si46xx_BUSY;
 	Si46xx_Status_Values_dt * deviceStatus = &Si46xxCfg.deviceStatus;
-
-	CDC_Transmit_FS((uint8_t *) "sst ", 4);
-	CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
-	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
-	CDC_Transmit_FS((uint8_t*) "\n", 1);
-
-	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE)
-	{
-		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
-		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
-	}
 
 	//printf("sst_%d\n",  Si46xxCfg.deviceStatus);
 
@@ -245,7 +235,7 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 			)
 			{
 				printf("Si46xx: IC Error\n");
-				return Si46xx_DEVICE_ERROR;
+				status = Si46xx_DEVICE_ERROR;
 			}
 
 			if // Resend last command error
@@ -255,26 +245,46 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 			)
 			{
 				printf("Si46xx_Boot: Message Error\n");
-				return Si46xx_MESSAGE_ERROR;
+				status = Si46xx_MESSAGE_ERROR;
 			}
 
 			if(deviceStatus->CTS == Si46xx_CTS_READY) // Ready for next command
 			{
-				return Si46xx_OK;
+				// TODO: noch besser einbauen:
+				if(deviceStatus->ERR_CMD == Si46xx_ERR_ERROR)
+				{
+					printf("Si46xx_Boot: Command error, Bad command, see reply byte 4 for details\n");
+				}
+				status = Si46xx_OK;
 
 				/* TODO :NOT_READY 	0x0 	Chip is not ready for the user to send a command or read a reply. If the user sends a firmware-interpreted command, the contents of the transaction will be ignored and the CTS bit will remain 0. If the user reads a reply, they will receive the status byte (CTS bit with value 0 followed by 7 other status bits). All following bytes will read as zero.
 				 *  -> muss der dann nicht für die anderen auhc ne 0 rausgeben?
 				 */
 			}
-			return Si46xx_BUSY;
+			break;
 
 		case HAL_BUSY:
-			return Si46xx_BUSY;
+			status = Si46xx_BUSY;
+			break;
 
 		default:
 			printf("\032[1;36mSi46xx: Si46xx_SPIgetAnalyzeStatus SPI Error\032[0m\r\n");
-			return Si46xx_SPI_ERROR;
+			status = Si46xx_SPI_ERROR;
+			break;
 	}
+
+	CDC_Transmit_FS((uint8_t *) "sst ", 4);
+	CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
+	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
+	CDC_Transmit_FS((uint8_t*) "\n", 1);
+
+	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE)
+	{
+		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
+		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
+	}
+
+	return status;
 }
 
 
