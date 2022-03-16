@@ -18,6 +18,7 @@
 #include "Si46xx_SPI_functions.h"
 #include "Si46xx_DAB_frequencies.h"
 
+#define SI46XX_BOOT_MAX_BUF_SIZE 4092
 
 enum Si46xx_Wait_en {
 	TIME_LEFT = 0,
@@ -30,6 +31,8 @@ const uint8_t Si46xx_Rom00Patch016[5796];
 const uint8_t Si46xx_Firmware[499356]; // BIN
 
 void set_Si46xx_ISR(void);
+void Si46xx_Reset(void);
+uint8_t Si46xx_isBusy(void);
 
 void Si46xx_Tasks(void);
 

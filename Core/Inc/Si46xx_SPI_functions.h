@@ -43,35 +43,43 @@ enum Si46xx_SPI_commands {
 	SI46XX_STOP_DIGITAL_SERVICE		= 0x82, /* Stops an audio or data service.														*/
 	SI46XX_GET_DIGITAL_SERVICE_DATA = 0x84,	/* Gets a block of data associated with one of the enabled data components of a digital services. */
 
-	SI46XX_DAB_TUNE_FREQ			= 0xB0, /*  Tunes the DAB Receiver to a frequency between 168 MHz and 240 MHz					*/
-	SI46XX_SET_FREQ_LIST			= 0xB8, /*  Sets the DAB frequency table. The frequencies are in units of kHz. */
-	SI46XX_GET_FREQ_LIST 			= 0xB9	/* Gets the DAB frequency table  														*/
+	SI46XX_DAB_TUNE_FREQ			= 0xB0, /* Tunes the DAB Receiver to a frequency between 168 MHz and 240 MHz					*/
+
+	SI46XX_DAB_GET_EVENT_STATUS		= 0xB3, /* Gets information about the various events related to the DAB radio.					*/
+	SI46XX_GET_ENSEMBLE_INFO		= 0xB4, /* Gets information about the current ensemble											*/
+
+	SI46XX_SET_FREQ_LIST			= 0xB8, /* Sets the DAB frequency table. The frequencies are in units of kHz. 					*/
+	SI46XX_GET_FREQ_LIST 			= 0xB9,	/* Gets the DAB frequency table  														*/
+
+	SI46XX_GET_SERVICE_INFO			= 0xC0	/* Gets information about a service.													*/
 };
 
 typedef enum
 {
 	SI46XX_MSG_NONE = 0,
+	SI46XX_MSG_POWER_UP,
+	SI46XX_MSG_HOST_LOAD,
+
+	// Flash commands
+	// TODO: die FLASH_LOAD-Kommandos mit Subcommand einbauen
+
+	SI46XX_MSG_LOAD_INIT,
+	SI46XX_MSG_BOOT,
+
 	SI46XX_MSG_REFRESH_SYS_STATE,
 	SI46XX_MSG_GET_DIGITAL_SERVICE_LIST,
 	SI46XX_MSG_DAB_TUNE_FREQ,
 	SI46XX_MSG_START_DIGITAL_SERVICE,
 	SI46XX_MSG_STOP_DIGITAL_SERVICE,
 	SI46XX_MSG_GET_DIGITAL_SERVICE_DATA,
+	SI46XX_MSG_GET_EVENT_STATUS,
+	SI46XX_MSG_GET_ENSEMBLE_INFO,
 	SI46xx_MSG_SET_FREQ_LIST,
 	SI46XX_MSG_GET_FREQ_LIST,
+	SI46XX_MSG_GET_SERVICE_INFO,
 
 	SI46XX_MSG_SIZE
 }Si46xx_msg_en;
-
-// Enum for SPI status of current function
-typedef enum
-{
-	Si46xx_OK = 0,
-	Si46xx_BUSY,
-	Si46xx_SPI_ERROR,
-	Si46xx_MESSAGE_ERROR,
-	Si46xx_DEVICE_ERROR
-}Si46xx_statusType;
 
 typedef struct
 {

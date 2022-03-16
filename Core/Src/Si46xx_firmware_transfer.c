@@ -6,6 +6,198 @@
  */
 
 #include "Si46xx.h"
+#include "Si46xx_firmware_transfer.h"
+
+extern struct Si46xx_Config Si46xxCfg;
+
+// Enum for state machine
+enum Si46xx_firmware_state
+{
+	Si46xx_FIRMWARE_STATE_IDLE = 0, // Nothing to do, transfer finished
+	Si46xx_FIRMWARE_STATE_WAITING,	// Wait for SPI transfer being finished
+	Si46xx_FIRMWARE_STATE_SEND		// Prepare block for SPI transfer and send
+
+}fw_state;
+
+
+// TODO: vorbereiten, dass firmware gesendet wird
+Si46xx_statusType Si46xx_send_firmware(fw_source_dt fw_source, uint8_t * fwBufPtr, uint32_t fwBufSize)
+{
+	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
+
+	if(fw_state == Si46xx_FIRMWARE_STATE_IDLE)
+	{
+		firmware->fw_source = fw_source;
+
+		if(firmware->fw_source == FW_SRC_USB) // If the current module should be transferred by USB
+		{
+			firmware->fwBufPtr = 0;
+			firmware->fwBufSize = 0; // To be set by USB CDC function
+
+			/* wait for USB firmware */
+			firmware->usbFw_wanted = USB_FW_WAITING;
+
+			/* initiate process to PC */
+			// TODO: Fehlerbehandlung, wenn erkannt wird, dass gar kein PC angeschlossen ist
+			printf("sfile_FW_FIRMWARE\n");
+		}
+		else // If the transfer should happen from µC ROM
+		{
+			firmware->fwBufPtr = fwBufPtr;
+			firmware->fwBufSize = fwBufSize;
+		}
+
+		fw_state = Si46xx_FIRMWARE_STATE_SEND;
+
+		return Si46xx_OK;
+	}
+	else
+	{
+		return Si46xx_BUSY;
+	}
+}
+
+void Si46xx_firmware_tasks(void)
+{
+	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
+
+	switch(fw_state)
+	{
+		case Si46xx_FIRMWARE_STATE_IDLE:
+
+			// Aktivieren, wenn Befehl vorhanden, dann in BUSY-State für aktuellen Pointer verarbeiten
+			// TODO: initialisierung von Datenzuordnungen
+			// Si46xx_INIT_STATE_HOST_LOAD_SEND -> diese Funktionen
+
+
+			break;
+
+		case Si46xx_FIRMWARE_STATE_WAITING:
+
+			// TODO: Warten, bis functions wieder idle ist und neue Befehle nehmen kann, mögliche Fehler auswerten, dann aufhören
+
+			// Command not any more on stack and transfer finished
+			//if(Si46xxCfg.state == Si46xx_STATE_IDLE) // TODO: geht so für µc.. aber nicht USB..
+			if(!Si46xx_isBusy())
+			{
+				// Stop if anything unplanned has happened
+				if(Si46xxCfg.analyzedStatus != Si46xx_OK)
+				{
+					printf("Si46xx_firmware_transfer: Error in firmware transfer, setting back to idle... \n");
+					fw_state = Si46xx_FIRMWARE_STATE_IDLE;
+					break;
+				}
+
+				if(firmware->fwBufSize > SI46XX_BOOT_MAX_BUF_SIZE) // Still packages to send
+				{
+					firmware->fwBufSize -= SI46XX_BOOT_MAX_BUF_SIZE;
+					printf("Si46xx_firmware_transfer: remaining fwBufSize %ld \n", firmware->fwBufSize);
+
+					// Tasks to do on USB transfer
+					if(firmware->fw_source == FW_SRC_USB) // TODO: allgemeine funktion, die zu Beginn gesetzt wird
+					{
+						// Show CDC state machine that we're waiting for the next block
+						firmware->usbFw_wanted = USB_FW_WAITING;
+					}
+					// Tasks to do while transferring from uC flash
+					else if(firmware->fw_source == FW_SRC_UC)
+					{
+						//firmware->fwBufPtr = firmware->fwBufPtr + SI46XX_BOOT_MAX_BUF_SIZE; TODO: Muss ja gar nicht, wenn die Sende-Funktion den Ptr schiebt??
+					}
+
+					fw_state = Si46xx_FIRMWARE_STATE_SEND;
+				}
+				else // Nothing more to send, go back to idle
+				{
+					// Tasks to do on USB transfer mode when transfer of file is finished
+					if(firmware->fw_source == FW_SRC_USB)
+					{
+						// Reset USB firmware transfer, if it was activated
+						firmware->usbFw_wanted = USB_FW_NONE;
+					}
+
+					fw_state = Si46xx_FIRMWARE_STATE_IDLE;
+				}
+			}
+
+			break;
+
+		case Si46xx_FIRMWARE_STATE_SEND:
+
+			// If USB_FW is initiated and we ware waiting for the progress to be initiated and the block to be transferred
+			if(firmware->usbFw_wanted == USB_FW_WAITING)
+			{
+				break;
+			}
+			else if(firmware->usbFw_wanted == USB_FW_TRANSFERRED)
+			{
+				// Set state for CDC module to let it wait, we transfer this block now
+				firmware->usbFw_wanted = USB_FW_BUSY;
+			}
+
+			// copy the data from uC flash or USB buffer onto SPI buffer and starts SPI transfer
+			// TODO: Erstmal nur Hostload, hier später dann auch auf Flash schreiben
+
+			cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_HOST_LOAD]);
+
+			//Si46xx_isBusy(); // TODO: Prüfen, ob es dann wirklich auf busy steht, die funktion ist nur zum testen hier
+
+			// Wenn gesendet und wartet auf transfer:...........
+			fw_state = Si46xx_FIRMWARE_STATE_WAITING;
+
+			break;
+	}
+}
+
+/* Return if we're waiting for USB input */
+usb_fw_en Si46xx_boot_getUSB_fw_state(void)
+{
+	return Si46xxCfg.firmware.usbFw_wanted;
+}
+
+uint8_t Si46xx_boot_setUSB_fw_state(usb_fw_en usbFw)
+{
+	if(Si46xxCfg.firmware.usbFw_wanted == USB_FW_BUSY)
+	{
+		return 1;
+	}
+
+	Si46xxCfg.firmware.usbFw_wanted = usbFw;
+
+	return 0;
+}
+
+/* Refurn current pointer WEG */
+/*uint8_t * Si46xx_boot_getUSB_ptr(void)
+{
+	if(Si46xxCfg.firmware.fwBufPtr > 0)
+	{
+		return Si46xxCfg.firmware.fwBufPtr;
+	}
+	else
+	{
+		return 0;
+	}
+}*/
+
+/* Return (remaining) size of buffer for USB block*/
+size_t Si46xx_boot_getFwBufSize(void)
+{
+	return Si46xxCfg.firmware.fwBufSize;
+}
+
+uint8_t Si46xx_boot_setFwBufSize(uint32_t size)
+{
+	// only accept external changes when waiting for USB configuration
+	if(Si46xxCfg.firmware.usbFw_wanted != USB_FW_WAITING)
+	{
+		return 1;
+	}
+
+	Si46xxCfg.firmware.fwBufSize = size;
+
+	return 0;
+}
 
 /*firmwareBuffer_dt * fwBufferInit(uint32_t size)
 {

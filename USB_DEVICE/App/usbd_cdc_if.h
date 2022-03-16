@@ -55,8 +55,8 @@
 /* Define size for the receive and transmit buffer over CDC */
 /* It's up to user to redefine and/or remove those define */
  // Angepasst für SPI-Übertragung mit 4kB-Blöcken
-#define APP_RX_DATA_SIZE  8192
-#define APP_TX_DATA_SIZE  2048
+//#define APP_RX_DATA_SIZE  8192
+//#define APP_TX_DATA_SIZE  2048
 
 
 /* USER CODE END EXPORTED_DEFINES */

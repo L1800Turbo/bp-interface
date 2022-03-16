@@ -33,22 +33,15 @@ HAL_StatusTypeDef Si46xx_Send_LoadInit(void);
 HAL_StatusTypeDef Si46xx_HostLoad(fw_source_dt fwSource, uint8_t * bufferPtr, uint32_t size);
 HAL_StatusTypeDef Si46xx_Send_Boot(void);
 
-// TODO: mehr eine temporäre Geschichte für USB-Befehl ohne Prüfung und so..
-void Si46xx_Boot(void)
-{
-	//printf("Setze State ohne Frage auf BOOTING...\r\n"); -> in ISR geht das nicht
-	bootState = Si46xx_INIT_STATE_OFF;
-	Si46xxCfg.state = Si46xx_STATE_BOOTING;
-}
-
 /* Configure sources for firmware */
+// TODO anders oder weg
 uint8_t Si46xx_Boot_SetSources(fw_source_dt srcBootloader_patch, fw_source_dt srcFirmware)
 {
 	uint8_t retVal = 0;
 
 	if(srcBootloader_patch < FW_SRC_size)
 	{
-		firmware.fw_source[FW_BOOTLOADER_PATCH] = srcBootloader_patch;
+		//firmware.fw_source[FW_BOOTLOADER_PATCH] = srcBootloader_patch;
 	}
 	else
 	{
@@ -57,7 +50,7 @@ uint8_t Si46xx_Boot_SetSources(fw_source_dt srcBootloader_patch, fw_source_dt sr
 
 	if(srcFirmware < FW_SRC_size)
 	{
-		firmware.fw_source[FW_FIRMWARE] = srcFirmware;
+		//firmware.fw_source[FW_FIRMWARE] = srcFirmware;
 	}
 	else
 	{
@@ -65,56 +58,6 @@ uint8_t Si46xx_Boot_SetSources(fw_source_dt srcBootloader_patch, fw_source_dt sr
 	}
 
 	return retVal;
-}
-
-/* Return if we're waiting for USB input */
-usb_fw_en Si46xx_boot_getUSB_fw_state(void)
-{
-	return firmware.usbFw_wanted;
-}
-
-uint8_t Si46xx_boot_setUSB_fw_state(usb_fw_en usbFw)
-{
-	if(firmware.usbFw_wanted == USB_FW_BUSY)
-	{
-		return 1;
-	}
-
-	firmware.usbFw_wanted = usbFw;
-
-	return 0;
-}
-
-/* Refurn current pointer WEG */
-uint8_t * Si46xx_boot_getUSB_ptr(void)
-{
-	if(firmware.fwBufPtr > 0)
-	{
-		return firmware.fwBufPtr;
-	}
-	else
-	{
-		return 0;
-	}
-}
-
-/* Return (remaining) size of buffer for USB block*/
-size_t Si46xx_boot_getFwBufSize(void)
-{
-	return firmware.fwBufSize;
-}
-
-uint8_t Si46xx_boot_setFwBufSize(uint32_t size)
-{
-	// only accept external changes when waiting for USB configuration
-	if(firmware.usbFw_wanted != USB_FW_WAITING)
-	{
-		return 1;
-	}
-
-	firmware.fwBufSize = size;
-
-	return 0;
 }
 
 /* Switch between the right boot state depending on the SPI status */
@@ -243,7 +186,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 				case HAL_OK:
 					Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
 
-					if(firmware.fw_source[firmware.step] == FW_SRC_USB) // If the current module should be transferred by USB
+					if(firmware.fw_source == FW_SRC_USB) // If the current module should be transferred by USB
 					{
 						firmware.fwBufPtr = 0;
 						firmware.fwBufSize = 0; // To be set by USB CDC function
@@ -327,7 +270,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 			}
 
 			// HostLoad copies the data from uC flash or USB buffer onto SPI buffer and starts SPI transfer
-			switch(Si46xx_HostLoad(firmware.fw_source[firmware.step], firmware.fwBufPtr, (firmware.fwBufSize > 4092 ? 4092 : firmware.fwBufSize)))
+			/*switch(Si46xx_HostLoad(firmware.fw_source[firmware.step], firmware.fwBufPtr, (firmware.fwBufSize > 4092 ? 4092 : firmware.fwBufSize)))
 			{
 				case HAL_OK:
 					Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
@@ -342,7 +285,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 					//firmware.step = FW_BOOTLOADER_PATCH;
 					//bootState = Si46xx_INIT_STATE_PREPARE_LOAD_FIRMWARE_SEND;
 					break;
-			}
+			}*/
 			break;
 
 		case Si46xx_INIT_STATE_HOST_LOAD_WAIT:
@@ -360,13 +303,13 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 						HAL_GPIO_TogglePin(LED_GREEN_Port, LED_GREEN_Pin);
 
 						// Tasks to do on USB transfer
-						if(firmware.fw_source[firmware.step] == FW_SRC_USB)
+						if(firmware.fw_source == FW_SRC_USB)
 						{
 							// Show CDC state machine that we're waiting for the next block
 							firmware.usbFw_wanted = USB_FW_WAITING;
 						}
 						// Tasks to do while transferring from uC flash
-						else if(firmware.fw_source[firmware.step] == FW_SRC_UC)
+						else if(firmware.fw_source == FW_SRC_UC)
 						{
 							firmware.fwBufPtr = firmware.fwBufPtr + SI46XX_BOOT_MAX_BUF_SIZE;
 						}
@@ -376,7 +319,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 					else // Nothing more to send, go back to load with next FW package or finish
 					{
 						// Tasks to do on USB transfer mode when transfer of file is finished
-						if(firmware.fw_source[firmware.step] == FW_SRC_USB)
+						if(firmware.fw_source == FW_SRC_USB)
 						{
 							// Reset USB firmware transfer, if it was activated
 							firmware.usbFw_wanted = USB_FW_NONE;
@@ -524,7 +467,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 
 /* Functions called by state machine ---------------------------------------------------*/
 
-HAL_StatusTypeDef Si46xx_Send_PowerUp(void)
+HAL_StatusTypeDef Si46xx_Send_PowerUp(void) // TODO: ist in Functions kopiert
 {
 	HAL_StatusTypeDef state = HAL_OK;
 	uint8_t data[16];
@@ -552,7 +495,7 @@ HAL_StatusTypeDef Si46xx_Send_PowerUp(void)
 	return state;
 }
 
-HAL_StatusTypeDef Si46xx_Send_LoadInit(void)
+HAL_StatusTypeDef Si46xx_Send_LoadInit(void) // TODO ist in functions...
 {
 	uint8_t data[2];
 	HAL_StatusTypeDef state = HAL_OK;

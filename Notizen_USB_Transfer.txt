@@ -27,3 +27,11 @@ Hier mit der aktuellen Datei, bzw. dem Rest von unten definiert hin
 |Si-Boot: Datei-Größe - SPI-Block
 |Si-Boot: Sind noch Daten zu senden? Loopen
         Sonst: Weiter...
+
+        
+        
+Aktuelle Notizen zum Debuggen 14.03.2022:
+- Breakpoint auf Empfangen-Funktion: Bleibt der Sendebalken dann mehrmals stehen?
+- Wandern wr und rd passend hoch?
+- Breakpoint auf Überlauf von CDC-Empfangen
+- Was lässt ihn im Scriptcommunicator das Fenster schließen und kommentarlos die Übertragung beendnen?

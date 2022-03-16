@@ -13,6 +13,9 @@
 #include "Si46xx_DAB_frequencies.h"
 #include "circular_buffer.h"
 
+#define MAX_SERVICES 50
+#define MAX_COMPONENTS 15
+
 /* SPI states ---------------------------------------------------------------------------- */
 
 enum Si46xx_CTS {
@@ -34,7 +37,9 @@ enum Si46xx_ERR_REPLY {
 
 enum Si46xx_ISR_state_en {
 	ISR_SET = 0,
-	ISR_UNSET
+	ISR_UNSET,
+	ISR_INACTIVE, // for functions without interrupt pin (before patching interrupt doesn't work)
+	ISR_FIRST_FLAG // after bootloader patch, ISR rises; from now on using ISRs should be possible, neithertheless, the current function must be finished
 };
 
 enum Si46xx_Switch {
@@ -46,7 +51,8 @@ enum Si46xx_Switch {
 typedef enum
 {
 	Si46xx_STATE_IDLE = 0,
-	Si46xx_STATE_BOOTING,
+	Si46xx_STATE_SENDING,
+	Si46xx_STATE_RESET,
 	Si46xx_STATE_BUSY
 }Si46xx_state_en;
 
@@ -115,14 +121,51 @@ struct Si46xx_Init_Values {
     							This parameter is only required if using the crystal oscillator. */
 };
 
+// Enum for SPI status of current function
+typedef enum
+{
+	Si46xx_OK = 0,
+	Si46xx_BUSY,
+	Si46xx_SPI_ERROR,
+	Si46xx_MESSAGE_ERROR,
+	Si46xx_DEVICE_ERROR
+}Si46xx_statusType;
+
 /* DAB states ---------------------------------------------------------------------------- */
+
+typedef struct
+{
+	uint16_t componentID;
+	uint8_t tmID;
+
+	uint8_t ascTy_dscTy;	// ASCTy: Audio service component type, DSCTy: Data service component type
+
+}dab_component_t;
+
+typedef struct
+{
+	uint32_t serviceID;
+	uint8_t pdFlag;
+	uint8_t numberComponents;
+	char serviceLabel[16+1];
+
+	dab_component_t components[MAX_COMPONENTS];
+}dab_service_t;
 
 typedef struct // Struct for a frequency and channel
 {
 	enum DAB_frequencies channel;	// Channel with the according frequency
+
+	uint16_t listSize;
+	uint8_t numServices;
+	uint16_t version;
+
+	uint16_t ensembleID;
+	char ensembleLabel[16];
+
+	dab_service_t services[MAX_SERVICES];
 }dab_channel_dt;
 
-// TODO hier dann service kram und so hin
 
 
 /* Config enums -------------------------------------------------------------------------- */
@@ -136,6 +179,44 @@ typedef enum
 
 	FW_SRC_size
 }fw_source_dt;
+
+typedef enum
+{
+	USB_FW_NONE = 0,
+	USB_FW_WAITING,		// If we wait for the first CDC response
+	USB_FW_TRANSFERRED, // Show if CDC has a block transferred
+	USB_FW_BUSY // in case the buffer is being used and shouldn't be overwritten by CDC
+}usb_fw_en;
+
+typedef struct
+{
+	enum step_en { // TODO: auch noch weg
+		FW_NONE = 0,
+		FW_BOOTLOADER_PATCH,
+		FW_FIRMWARE,
+
+		FW_size
+	}step;
+
+	// Configuration where the files are located
+	//fw_source_dt fw_source[FW_size];	// TODO: Das wo anders hin, diesen ganzen Struct in firmware mitnehmen
+
+	/*enum fwTransfer // Indicator to wait for transfer being finished in multiple steps
+	{
+		SPI_FW_IDLE = 0,
+		SPI_FW_BUSY
+	}fw_spi_busy;*/
+
+
+	// Which one is the current firmware source?
+	fw_source_dt fw_source;
+
+	usb_fw_en usbFw_wanted;
+
+	uint8_t * fwBufPtr;
+	uint32_t fwBufSize;
+	//size_t fwUsbBufSize; // the USB package size to check if a whole block is received by USB CDC
+}Si46xx_firmware_dt;
 
 
 /* Config structures---------------------------------------------------------------------- */
@@ -151,6 +232,9 @@ struct Si46xx_Config
 	/* Device status, updated with each SPI status command */
 	Si46xx_Status_Values_dt deviceStatus;
 
+	/* Analyzed status after a received message */
+	Si46xx_statusType analyzedStatus;
+
 	/* State of Zustandsautomat */
 	Si46xx_state_en state;
 
@@ -164,18 +248,32 @@ struct Si46xx_Config
 	/* Ring buffer for messages */
 	circular_buffer cb;
 
+	/* firmware information */
+	Si46xx_firmware_dt firmware;
+
 	/* Values for DAB mode */
 	enum Si46xx_Image image;
 
 	/* Frequency parameters */
 	enum Si46xx_frequencyList_status {FREQ_LIST_INVALID, FREQ_LIST_VALID} freqencyListStatus;
-	enum DAB_frequencies freqIndex;
+
+	struct events
+	{
+		// TODO: hier noch alle Events eintragen und drauf eingehen
+
+		uint8_t freq_info_int:1; 	/* New Frequency Information interrupt. Indicates that new Frequency Information is available. The Frequency Information list is retrieved with the DAB_GET_FREQ_INFO command. The rate at which frequency information interrupts can occur is defined by the DAB_EVENT_MIN_FREQINFO_PERIOD property. */
+		uint8_t service_list_int:1; /* New service list interrupt. Indicates that a new digital service list is available. The new service list is retrieved with the GET_DIGITAL_SERVICE_LIST command. */
+	}events;
+
+	enum DAB_frequencies freqIndex;  // TODO: aktueller FreqInd, um mit Channeldata zu vergleichen?
 
 	struct wantedService
 	{
-		uint32_t serviceID;
-		uint32_t componentID;
+		uint8_t serviceID;
+		uint8_t componentID;
 	}wantedService;
+
+	dab_channel_dt channelData; // to contain the data of the current channel
 
 };
 

@@ -318,7 +318,8 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
 	// Set pointer to next write index
 	USBD_CDC_SetRxBuffer(&hUsbDeviceFS, cdc_rx_rb.buf + cdc_rx_rb.wr);
 	// Receive the next packet
-	if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
+	uint32_t bufSpace = RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb);
+	if(bufSpace > CDC_DATA_FS_MAX_PACKET_SIZE) // TODO: war 0, kann aber nicht
 	{
 		cdc_rx_rb.bufferState = BUFFER_FREE;
 		USBD_CDC_ReceivePacket(&hUsbDeviceFS);
@@ -569,8 +570,10 @@ void cdc_Ringbuf_Tasks(void)
 		// If the buffer was marked as full before
 		if(cdc_rx_rb.bufferState == BUFFER_FULL)
 		{
-			// Is the buffer free in the meantime?
-			if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
+			// Is the buffer free in the meantime? TODO Kopie aus RX
+			uint32_t bufSpace = RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb);
+			if(bufSpace > CDC_DATA_FS_MAX_PACKET_SIZE)
+			//if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
 			{
 				cdc_rx_rb.bufferState = BUFFER_FREE;
 

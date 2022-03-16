@@ -9,6 +9,12 @@
 #include <string.h>
 
 /* Private functions ------------------------------------------- */
+Si46xx_statusType Si46xx_Msg_ReadReply_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_PowerUp_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_LoadInit_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_Boot_sendFunc();
+
 HAL_StatusTypeDef Si46xx_Msg_GetSysState_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetSysState_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc();
@@ -21,11 +27,16 @@ HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc();
 Si46xx_statusType Si46xx_Msg_StopDigitalService_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_GetEventStatus_sendFunc();
+Si46xx_statusType Si46xx_Msg_GetEventStatus_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_GetEnsembleInfo_sendFunc();
+Si46xx_statusType Si46xx_Msg_GetEnsembleInfo_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_SetFreqList_sendFunc();
 Si46xx_statusType Si46xx_Msg_SetFreqList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetFreqList_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc();
-
+HAL_StatusTypeDef Si46xx_Msg_GetServiceInfo_sendFunc();
+Si46xx_statusType Si46xx_Msg_GetServiceInfo_receiveFunc();
 
 extern struct Si46xx_Config Si46xxCfg;
 uint8_t spiBuffer[4096];
@@ -34,6 +45,30 @@ extern Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len
 
 const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 		{0}, /* SI46XX_MSG_NONE */
+		{
+				.msgIndex    = SI46XX_MSG_POWER_UP,
+				.msgName	 = "SI46XX_MSG_POWER_UP",
+				.sendFunc    = Si46xx_Msg_PowerUp_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_POWER_UP */
+		{
+				.msgIndex    = SI46XX_MSG_HOST_LOAD,
+				.msgName	 = "SI46XX_MSG_HOST_LOAD",
+				.sendFunc    = Si46xx_Msg_HostLoad_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_HOST_LOAD */
+		{
+				.msgIndex    = SI46XX_MSG_LOAD_INIT,
+				.msgName	 = "SI46XX_MSG_LOAD_INIT",
+				.sendFunc    = Si46xx_Msg_LoadInit_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_LOAD_INIT */
+		{
+				.msgIndex    = SI46XX_MSG_BOOT,
+				.msgName	 = "SI46XX_MSG_BOOT",
+				.sendFunc    = Si46xx_Msg_Boot_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_BOOT */
 		{
 				.msgIndex    = SI46XX_MSG_REFRESH_SYS_STATE,
 				.msgName	 = "SI46XX_MSG_REFRESH_SYS_STATE",
@@ -71,6 +106,18 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.receiveFunc = Si46xx_Msg_GetDigitalServiceData_receiveFunc
 		},  /* SI46XX_MSG_GET_DIGITAL_SERVICE_DATA */
 		{
+				.msgIndex	 = SI46XX_MSG_GET_EVENT_STATUS,
+				.msgName	 = "SI46XX_MSG_GET_EVENT_STATUS",
+				.sendFunc	 = Si46xx_Msg_GetEventStatus_sendFunc,
+				.receiveFunc = Si46xx_Msg_GetEventStatus_receiveFunc
+		},	/* SI46XX_MSG_GET_EVENT_STATUS */
+		{
+				.msgIndex	 = SI46XX_MSG_GET_ENSEMBLE_INFO,
+				.msgName	 = "SI46XX_MSG_GET_ENSEMBLE_INFO",
+				.sendFunc	 = Si46xx_Msg_GetEnsembleInfo_sendFunc,
+				.receiveFunc = Si46xx_Msg_GetEnsembleInfo_receiveFunc
+		},	/* SI46XX_MSG_GET_ENSEMBLE_INFO */
+		{
 				.msgIndex	 = SI46xx_MSG_SET_FREQ_LIST,
 				.msgName	 = "SI46xx_MSG_SET_FREQ_LIST",
 				.sendFunc	 = Si46xx_Msg_SetFreqList_sendFunc,
@@ -81,7 +128,13 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.msgName	 = "SI46XX_MSG_GET_FREQ_LIST",
 				.sendFunc    = Si46xx_Msg_GetFreqList_sendFunc,
 				.receiveFunc = Si46xx_Msg_GetFreqList_receiveFunc
-		}	/* SI46XX_MSG_GET_FREQ_LIST     */
+		}	,/* SI46XX_MSG_GET_FREQ_LIST     */
+		{
+				.msgIndex    = SI46XX_MSG_GET_SERVICE_INFO,
+				.msgName	 = "SI46XX_MSG_GET_SERVICE_INFO",
+				.sendFunc    = Si46xx_Msg_GetServiceInfo_sendFunc,
+				.receiveFunc = Si46xx_Msg_GetServiceInfo_receiveFunc
+		}	/* SI46XX_MSG_GET_SERVICE_INFO     */
 };
 
 
@@ -110,6 +163,13 @@ void HAL_SPI_TxCpltCallback (SPI_HandleTypeDef * hspi)
 {
 	/* Deactivate chip select */
 	SI46XX_CS_OFF();
+
+	if(Si46xxCfg.isrState == ISR_INACTIVE) // Wait per default after each message
+	{
+		Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT);
+	}
+
+	// TODO: hier dann eigwentlich das Wait erst hin ohne ISR, v.a. beim Firmqare übertragen
 }
 
 /**
@@ -145,6 +205,132 @@ HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, 
 
 
 /* Message functions to be called from stack ------------------- */
+
+// Generic read reply
+Si46xx_statusType Si46xx_Msg_ReadReply_receiveFunc()
+{
+	uint8_t data[5];
+
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 4);
+
+	if(state != Si46xx_OK)
+	{
+		printf("Si46xx_Msg_ReadReply_receiveFunc: NOT okay (evtl busy)!\n");
+		return state;
+	}
+
+	printf("Si46xx_Msg_ReadReply_receiveFunc: okay\n");
+
+	return state;
+}
+
+HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc()
+{
+	HAL_StatusTypeDef state = HAL_OK;
+	uint32_t i = 0;
+
+	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
+
+	uint32_t size = (firmware->fwBufSize > 4092 ? 4092 : firmware->fwBufSize);
+
+	spiBuffer[0] = SI46XX_HOST_LOAD;
+	spiBuffer[1] = 0x00;
+	spiBuffer[2] = 0x00;
+	spiBuffer[3] = 0x00;
+
+
+	// If the firmware comes from the uC Flash
+	if(firmware->fw_source == FW_SRC_UC)
+	{
+		for(i=0; i<size; i++)
+		{
+			spiBuffer[i+4] = *firmware->fwBufPtr;
+
+			firmware->fwBufPtr++;
+		}
+	}
+	// If the firmware should be transferred from the USB buffer
+	else if(firmware->fw_source == FW_SRC_USB)
+	{
+		cdc_ringbufRx_get((uint8_t *) (spiBuffer+4), (size_t *) &size);
+	}
+	else // Firmware source not implemented
+	{
+		state = HAL_ERROR;
+		return state;
+	}
+
+	SI46XX_CS_ON();
+	state = HAL_SPI_Transmit_IT(Si46xxCfg.hspi, spiBuffer, size + 4);
+	// CS_OFF by INT
+
+	Si46xx_SetWaitTime(50); // TODO: wird von der Fertig-Funktion überschrieben...
+
+	return state;
+}
+
+HAL_StatusTypeDef Si46xx_Msg_LoadInit_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_OK;
+
+	data[0] = SI46XX_LOAD_INIT;
+	data[1] = 0x00;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+
+	return state;
+}
+
+HAL_StatusTypeDef Si46xx_Msg_Boot_sendFunc()
+{
+	HAL_StatusTypeDef state = HAL_OK;
+
+	//Si46xxCfg.timeoutValue = 300; TODO
+
+	spiBuffer[0] = SI46XX_BOOT;
+	spiBuffer[1] = 0x00;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, spiBuffer, 2);
+
+	return state;
+}
+
+// SI46XX_MSG_POWER_UP
+HAL_StatusTypeDef Si46xx_Msg_PowerUp_sendFunc()
+{
+	HAL_StatusTypeDef state = HAL_OK;
+	uint8_t data[16];
+
+	// Prepare data into SPI buffer
+	data[0]  = SI46XX_POWER_UP;
+	data[1]  = (Si46xxCfg.initConfig.CTS_InterruptEnable << 7);
+	data[2]  = (Si46xxCfg.initConfig.CLK_MODE << 4) | Si46xxCfg.initConfig.XOSC_TR_SIZE;
+	data[3]  = (Si46xxCfg.initConfig.IBIAS & 0x7F);
+	data[4]  =  Si46xxCfg.initConfig.XTAL_Freq 		   & 0xFF;
+	data[5]  = (Si46xxCfg.initConfig.XTAL_Freq >>  8 ) & 0xFF;
+	data[6]  = (Si46xxCfg.initConfig.XTAL_Freq >> 16 ) & 0xFF;
+	data[7]  = (Si46xxCfg.initConfig.XTAL_Freq >> 24 ) & 0xFF;
+	data[8]  = (Si46xxCfg.initConfig.CTUN & 0x3F);
+	data[9]  = 0x00 | (1 << 4);
+	data[10] = 0x00;
+	data[11] = 0x00;
+	data[12] = 0x00;
+	data[13] = (Si46xxCfg.initConfig.IBIAS_RUN & 0x7F);
+	data[14] = 0x00;
+	data[15] = 0x00;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 16);
+
+	Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms TODO erstmal testweise, der rebootet iwie 3x
+	Si46xxCfg.isrState = ISR_INACTIVE; // This function doesn't offer interrupts, as it's before the bootloader patch
+
+	return state;
+}
+
+
+
+// SI46XX_MSG_REFRESH_SYS_STATE
 HAL_StatusTypeDef Si46xx_Msg_GetSysState_sendFunc()
 {
 	uint8_t data[2];
@@ -216,30 +402,40 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 {
 	//uint8_t data[7]; // TODO 7, temporär festgelegt, was ist der maximale Wert hier?
 	uint8_t * data = spiBuffer;
+	dab_channel_dt * chan = &Si46xxCfg.channelData.channel;
 
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 6);
-	uint16_t length = 0;
+	//uint16_t length = 0;
 
 	if(state != Si46xx_OK)
 	{
 		return state;
 	}
 
-	length = (uint16_t) data[5] + (data[6] << 8);
-	printf("Si46xx: Size of service list: %d bytes \n", length);
+	// clear old channel data
+	memset(chan, 0x00, sizeof(dab_channel_dt));
+
+	chan->channel = Si46xxCfg.freqIndex;
+
+	// TODO: Version und so...
+
+	chan->listSize = (uint16_t) data[5] + (data[6] << 8);
+
+	//length = (uint16_t) data[5] + (data[6] << 8);
+	printf("Si46xx: Size of service list: %d bytes \n", chan->listSize);
 
 	//Si46xxCfg.image = spiBuffer[5];
 
-	state = Si46xx_SPIgetAnalyzeStatus(data, 6 + length);
+	state = Si46xx_SPIgetAnalyzeStatus(data, 6 + chan->listSize);
 
-	if(state != Si46xx_OK || length == 0)
+	if(state != Si46xx_OK || chan->listSize == 0)
 	{
 		return state;
 	}
 
 	// Send message for debug
-	printf("sSrvList_%d\n", 6+length);
-	CDC_Transmit_FS(data, 6+length);
+	printf("sSrvList_%d\n", 6+chan->listSize);
+	CDC_Transmit_FS(data, 6+chan->listSize);
 
 	/* TODO: Digitale Serviceliste auswerten:
 	 * 8.5
@@ -254,20 +450,25 @@ host command.
 	// TODO: In richtige Liste einbauen, damit man das später auch abrufen kann... Zunächst mit fixer Svc/Cmp-Listenbreite?
 
 	uint8_t * bufPtr = data + 5; // Point to List Size
-	length = bufPtr[0] + (bufPtr[1] << 8);
+	chan->listSize = bufPtr[0] + (bufPtr[1] << 8);
 
-	uint8_t numberServices = bufPtr[4];
-	printf("Si46xx: # of services: %d \n", numberServices);
+	chan->version = bufPtr[2] + (bufPtr[3] << 8);
+
+	//uint8_t numberServices = bufPtr[4];
+	chan->numServices = bufPtr[4];
+	printf("Si46xx: # of services: %d \n", chan->numServices);
 
 	uint8_t position = 8; // initial...
 	bufPtr += position;
 
 	// Loop through services
-	for(uint8_t i=0; i<numberServices; i++)
+	for(uint8_t i=0; i<chan->numServices; i++)
 	{
+		chan->services[i].serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
+		//uint32_t serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
 
-		uint32_t serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
-		uint8_t pdFlag = bufPtr[4] & 0x01;
+		chan->services[i].pdFlag = bufPtr[4] & 0x01;
+		//uint8_t pdFlag = bufPtr[4] & 0x01;
 
 		struct serviceID_P // P/D=0
 		{
@@ -288,20 +489,20 @@ host command.
 		memcpy(serviceLabel, &bufPtr[8], 16);
 		serviceLabel[16] = '\0';
 
-		printf("Si46xx: ServiceID: %lX, P/D: %d, Label: %s \n", serviceID, pdFlag, serviceLabel);
+		printf("Si46xx: ServiceID: %lX, P/D: %d, Label: %s \n", chan->services[i].serviceID, chan->services[i].pdFlag, serviceLabel);
 
 		struct serviceID_P * srvID_P;
 		struct serviceID_D * srvID_D;
 
-		switch(pdFlag)
+		switch(chan->services[i].pdFlag)
 		{
 			case 0:
-				srvID_P = (struct serviceID_P*) &serviceID;
+				srvID_P = (struct serviceID_P*) chan->services[i].serviceID;
 				printf("Si46xx: SRV_REF: %X CountryID: %d\n", srvID_P->SRV_REF, srvID_P->CountryID);
 				break;
 
 			case 1:
-				srvID_D = (struct serviceID_D*) &serviceID;
+				srvID_D = (struct serviceID_D*) chan->services[i].serviceID;
 				printf("Si46xx: SRV_REF: %X CountryID: %d, ECC: %X\n", srvID_D->SRV_REF, srvID_D->CountyID, srvID_D->ECC);
 				break;
 		}
@@ -315,30 +516,36 @@ host command.
 		// Loop through components in the service
 		for(uint8_t j=0; j<numberComponents; j++)
 		{
+			dab_component_t * comp = &chan->services[i].components[j];
+
 			// Adjust pointer to current component
 			//bufPtr += position;
 
-			uint8_t tmID = bufPtr[1] >> 6;
-			uint16_t componentID = 0;
+			comp->tmID = bufPtr[1] >> 6;
+			comp->componentID = 0;
 
-			switch(tmID) // Component ID depends on the TM ID
+			//uint8_t tmID = bufPtr[1] >> 6;
+			//uint16_t componentID = 0;
+
+			switch(comp->tmID) // Component ID depends on the TM ID
 			{
 				case 0: // TMId=00 (MSC stream audio)
 				case 1: // TMId=01 (MSC stream data)
 				case 2: // TMId=10 (Reserved)
-					componentID = bufPtr[0] & 0x3F;
+					comp->componentID = bufPtr[0] & 0x3F;
 					break;
 
 				case 3: // TMId=11 (MSC packet data)
-					componentID = bufPtr[0] + ((bufPtr[1] & 0x0F) << 8);
+					comp->componentID = bufPtr[0] + ((bufPtr[1] & 0x0F) << 8);
 					// DGFlag is on Bit 13
 					break;
 			}
 
-			uint8_t ascTy_dscTy = bufPtr[2] >> 2;
+			comp->ascTy_dscTy = bufPtr[2] >> 2;
+			//uint8_t ascTy_dscTy = bufPtr[2] >> 2;
 
 
-			printf("Si46xx:      TMId: %X, ComponentID: %X, ASCTy/DSCTy: %d\n", tmID, componentID, ascTy_dscTy);
+			printf("Si46xx:      TMId: %X, ComponentID: %X, ASCTy/DSCTy: %d\n", comp->tmID, comp->componentID, comp->ascTy_dscTy);
 
 			// Jump to next component in current service block
 			//position += 4;
@@ -405,7 +612,9 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 		return state;
 	}
 
-	//Si46xxCfg.image = spiBuffer[5];
+	// Reset the indexes, as they are different on this ensemble
+	Si46xxCfg.wantedService.serviceID = 0;
+	Si46xxCfg.wantedService.componentID = 0;
 
 	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_INCOMPLETE) // TODO: Hier zu fragen ist nutzlos, kurz nach aufrufen ist tuning ja nicht durch
 	{
@@ -431,28 +640,33 @@ HAL_StatusTypeDef Si46xx_Msg_StartDigitalService_sendFunc()
 	uint8_t data[0xC];
 	HAL_StatusTypeDef state = HAL_BUSY;
 
-	if(Si46xxCfg.wantedService.serviceID == 0 || Si46xxCfg.wantedService.componentID == 0)
+	/*if(Si46xxCfg.wantedService.serviceID == 0 || Si46xxCfg.wantedService.componentID == 0) TODO: hier stattdessen prüfen, ob Index vorhanden ist/sind
 	{
 		state = HAL_ERROR;
 		return state;
-	}
+	}*/
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
+		// Get current service and component ID from wanted indexes
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
+		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
+
 		data[0x0] = SI46XX_START_DIGITAL_SERVICE;
 		data[0x1] = 0x00;
 		data[0x2] = 0x00;
 		data[0x3] = 0x00;
 
-		data[0x4] = (Si46xxCfg.wantedService.serviceID & 0x000000FF) >>  0;
-		data[0x5] = (Si46xxCfg.wantedService.serviceID & 0x0000FF00) >>  8;
-		data[0x6] = (Si46xxCfg.wantedService.serviceID & 0x00FF0000) >> 16;
-		data[0x7] = (Si46xxCfg.wantedService.serviceID & 0xFF000000) >> 24;
 
-		data[0x8] = (Si46xxCfg.wantedService.componentID & 0x000000FF) >>  0;
-		data[0x9] = (Si46xxCfg.wantedService.componentID & 0x0000FF00) >>  8;
-		data[0xA] = (Si46xxCfg.wantedService.componentID & 0x00FF0000) >> 16;
-		data[0xB] = (Si46xxCfg.wantedService.componentID & 0xFF000000) >> 24;
+		data[0x4] = (serviceID >>  0) & 0xFF;
+		data[0x5] = (serviceID >>  8) & 0xFF;
+		data[0x6] = (serviceID >> 16) & 0xFF;
+		data[0x7] = (serviceID >> 24) & 0xFF;
+
+		data[0x8] = (componentID >>  0) & 0xFF;
+		data[0x9] = (componentID >>  8) & 0xFF;
+		data[0xA] = (componentID >> 16) & 0xFF;
+		data[0xB] = (componentID >> 24) & 0xFF;
 
 
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 0xC);
@@ -480,20 +694,24 @@ HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc()
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
+		// Get current service and component ID from wanted indexes
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
+		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
+
 		data[0x0] = SI46XX_STOP_DIGITAL_SERVICE;
 		data[0x1] = 0x00;
 		data[0x2] = 0x00;
 		data[0x3] = 0x00;
 
-		data[0x4] = (Si46xxCfg.wantedService.serviceID & 0x000000FF) >>  0;
-		data[0x5] = (Si46xxCfg.wantedService.serviceID & 0x0000FF00) >>  8;
-		data[0x6] = (Si46xxCfg.wantedService.serviceID & 0x00FF0000) >> 16;
-		data[0x7] = (Si46xxCfg.wantedService.serviceID & 0xFF000000) >> 24;
+		data[0x4] = (serviceID >>  0) & 0xFF;
+		data[0x5] = (serviceID >>  8) & 0xFF;
+		data[0x6] = (serviceID >> 16) & 0xFF;
+		data[0x7] = (serviceID >> 24) & 0xFF;
 
-		data[0x8] = (Si46xxCfg.wantedService.componentID & 0x000000FF) >>  0;
-		data[0x9] = (Si46xxCfg.wantedService.componentID & 0x0000FF00) >>  8;
-		data[0xA] = (Si46xxCfg.wantedService.componentID & 0x00FF0000) >> 16;
-		data[0xB] = (Si46xxCfg.wantedService.componentID & 0xFF000000) >> 24;
+		data[0x8] = (componentID >>  0) & 0xFF;
+		data[0x9] = (componentID >>  8) & 0xFF;
+		data[0xA] = (componentID >> 16) & 0xFF;
+		data[0xB] = (componentID >> 24) & 0xFF;
 
 
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 0xC);
@@ -550,6 +768,68 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc()
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc()
 {
 	return Si46xx_OK;
+}
+
+
+
+// SI46XX_MSG_GET_EVENT_STATUS
+HAL_StatusTypeDef Si46xx_Msg_GetEventStatus_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+			data[0] = SI46XX_DAB_GET_EVENT_STATUS;
+			data[1] = 0x00 | 1; // TODO: hier ACK einbauen
+
+			state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_GetEventStatus_receiveFunc()
+{
+	uint8_t data[10];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 9);
+
+	// Attach interrupt infos to signals
+	Si46xxCfg.events.service_list_int	= (data[5]>>0) & 0x01;
+	Si46xxCfg.events.freq_info_int		= (data[5]>>1) & 0x01;
+
+	return state;
+}
+
+// SI46XX_MSG_GET_ENSEMBLE_INFO
+HAL_StatusTypeDef Si46xx_Msg_GetEnsembleInfo_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+			data[0] = SI46XX_GET_ENSEMBLE_INFO;
+			data[1] = 0x00;
+
+			state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_GetEnsembleInfo_receiveFunc()
+{
+	uint8_t data[0x1A];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 0x19);
+
+	Si46xxCfg.channelData.ensembleID = data[5] + (data[6]<<8);
+	memcpy(Si46xxCfg.channelData.ensembleLabel, &data[7], 16);
+
+	printf("sEnsemble_%u_%s\n", Si46xxCfg.channelData.ensembleID, Si46xxCfg.channelData.ensembleLabel);
+	// TODO Informationen auswerten
+
+	return state;
 }
 
 
@@ -664,6 +944,43 @@ Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc()
 		printf("Si46xx: Freq at %d: %lu \n", i,
 				(uint32_t) data[i+1]+(data[i+2]<<8)+(data[i+3]<<16)+(data[i+4]<<24));
 	}*/
+
+	return state;
+}
+
+// SI46XX_MSG_GET_SERVICE_INFO
+HAL_StatusTypeDef Si46xx_Msg_GetServiceInfo_sendFunc()
+{
+	uint8_t data[7];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		// Get current service from wanted indexes
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
+
+		data[0] = SI46XX_GET_SERVICE_INFO;
+		data[1] = 0x00;
+		data[2] = 0x00;
+		data[3] = 0x00;
+
+		data[0x4] = (serviceID >>  0) & 0xFF;
+		data[0x5] = (serviceID >>  8) & 0xFF;
+		data[0x6] = (serviceID >> 16) & 0xFF;
+		data[0x7] = (serviceID >> 24) & 0xFF;
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 7);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_GetServiceInfo_receiveFunc()
+{
+	uint8_t data[0x1A];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 0x19);
+
+	// TODO auswerten und in Variablen packen
 
 	return state;
 }

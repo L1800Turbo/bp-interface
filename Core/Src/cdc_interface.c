@@ -8,7 +8,8 @@
 #include "usbd_cdc_if.h"
 
 // Access to functions for firmware transfer
-#include "Si46xx_boot.h"
+#include "Si46xx_firmware_transfer.h"
+
 
 /* Private variable definitions --------------------------------------- */
 char cdcBuf[15];
@@ -33,7 +34,7 @@ void cdc_Interface_Tasks(void)
 {
 	size_t len = 10; // TODO: Vergrößern
 	// Ringbuffer tasks for RX and TX ringbuffer
-	cdc_Ringbuf_Tasks();
+	cdc_Ringbuf_Tasks(); // TODO: auf Dauer in main.c ?
 
 	// If we transfer a file, forward all data stream
 	if(cdcInterface.fileTransfer_state == CDC_FILE_TRANSFER_ACTIVE)
@@ -66,6 +67,7 @@ void cdc_Interface_Tasks(void)
 				break;
 
 			case USB_FW_TRANSFERRED:
+				// don't add new data as long the current data is transferred and not being copied
 			case USB_FW_BUSY:
 				// Busy, wait until Si46xx module is done copying this part by SPI
 				break;
@@ -85,7 +87,7 @@ void cdc_Interface_Tasks(void)
 		{
 			if(cdcBuf[i] == '\r')
 			{
-				msgBuf[msgBufIndex+1] = '\0'; // Terminate string
+				msgBuf[msgBufIndex/*+1*/] = '\0'; // Terminate string
 				cdc_Interface_AnalyzeFunction(msgBuf);
 
 				msgBufIndex = 0;
@@ -114,11 +116,10 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		printf("ver 0.01\n");
 
 		// Send source configuration
-		extern Si46xx_firmware_dt firmware;
-		//extern const char fw_stateStr;
+		//extern Si46xx_firmware_dt firmware;
 
 		// Send string with current firmware configuration
-		printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]);
+		//printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]); TODO umbauen, einbauen
 	}
 	else if(messageStr[0] == 's')
 	{
@@ -150,7 +151,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		// Run a command directly
 		else if(strncmp(messageStr, "scmd", 4) == 0)
 		{
-			uint8_t cmdIndex = atoi(&messageStr[4]);
+			uint8_t cmdIndex = atoi(&messageStr[4]); // TODO: Das hier passt noch cniht mit dem Index!
 
 			//printf("cmdIndex %d", cmdIndex);
 			if(cmdIndex > 0 && cmdIndex < SI46XX_MSG_SIZE)
@@ -165,7 +166,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		{
 			if(messageStr[7] - 0x30 < FW_SRC_size && messageStr[8] - 0x30 < FW_SRC_size)
 			{
-				Si46xx_Boot_SetSources(messageStr[7] - 0x30, messageStr[8] - 0x30);
+				//Si46xx_Boot_SetSources(messageStr[7] - 0x30, messageStr[8] - 0x30);
 			}
 			else
 			{
@@ -173,8 +174,8 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			}
 
 			// TODO temporär, eine firmware protected get function bauen...
-			extern Si46xx_firmware_dt firmware;
-			printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]);
+			//extern Si46xx_firmware_dt firmware;
+			//printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]);
 		}
 
 		// Tune to a frequency, refresh the contents of it: stune_n
@@ -204,28 +205,76 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		// Selecting a service and component
 		else if(strncmp(messageStr, "sStartSrv", 9) == 0)
 		{
+			char * strPtr;
+			char delimiter[] = "_";
+			uint8_t serviceID_index;
+			uint8_t componentID_index;
+
+
 			printf("Si46xx: sStartSrv called...\n");
 
-			// TODO: Das darf nicht binär kommen 0D ist z.B. ein \r
+			// get indexes from string
+			strPtr = strtok(messageStr, delimiter); // first part with command
+			strPtr = strtok(NULL, delimiter);		// get the first number
 
-			uint32_t serviceID   = messageStr[10] + (messageStr[11] << 8) + (messageStr[12] << 16) + (messageStr[13] << 24);
-			uint32_t componentID = messageStr[14] + (messageStr[15] << 8) + (messageStr[16] << 16) + (messageStr[17] << 24);
-
-			if(serviceID > 0 && componentID > 0) // TODO: Kanäle sinnvoll prüfen
+			// Get service ID index
+			if(strPtr != NULL)
 			{
-				Si46xxCfg.wantedService.serviceID   = serviceID;
-				Si46xxCfg.wantedService.componentID = componentID;
+				serviceID_index = atoi(strPtr); // TODO: wenn es nicht passt, gibt er 0 aus, aber das könnte ja auch ein richtiger Wert sein...
 
-				printf("Si46xx: Selected serviceID %lu, componentID: %lu \n", serviceID, componentID);
+				// Get component ID index
+				strPtr = strtok(NULL, delimiter);
+
+				if(strPtr != NULL)
+				{
+					componentID_index = atoi(strPtr);
+
+					Si46xxCfg.wantedService.serviceID   = serviceID_index;
+					Si46xxCfg.wantedService.componentID = componentID_index;
+
+					printf("Si46xx: Selected serviceID %lu, componentID: %u \n",
+							Si46xxCfg.channelData.services[serviceID_index].serviceID,
+							Si46xxCfg.channelData.services[serviceID_index].components[componentID_index].componentID);
+				}
 			}
+		}
 
+		else if(strncmp(messageStr, "sreset", 6) == 0)
+		{
+			Si46xx_Reset();
 		}
 
 		else if(strncmp(messageStr, "sboot", 5) == 0)
 		{
 			// TODO: Temporäte Lösung
-			extern void Si46xx_Boot(void);
-			Si46xx_Boot();
+			//extern void Si46xx_Boot(void);
+			//Si46xx_Boot();
+
+			if(Si46xx_send_firmware(FW_SRC_UC, (uint8_t *) &Si46xx_Rom00Patch016, sizeof(Si46xx_Rom00Patch016)) == Si46xx_OK)
+			{
+				printf("send_firmware anstoßen ging\n");
+			}
+			else
+			{
+				printf("send_firmware anstoßen ging nicht\n");
+			}
+		}
+
+		else if(strncmp(messageStr, "sload_fw", 8) == 0)
+		{
+			// TODO: Temporäte Lösung
+			//extern void Si46xx_Boot(void);
+			//Si46xx_Boot();
+
+			//if(Si46xx_send_firmware(FW_SRC_UC, (uint8_t *) &Si46xx_Firmware, sizeof(Si46xx_Firmware)) == Si46xx_OK)
+			if(Si46xx_send_firmware(FW_SRC_USB, 0, 0) == Si46xx_OK)
+			{
+				printf("send_firmware sboot_fw anstoßen ging\n");
+			}
+			else
+			{
+				printf("send_firmware sboot_fw anstoßen ging nicht\n");
+			}
 		}
 
 		// Transfer a (firmware/patch) file onto the device
@@ -245,7 +294,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 					// Delete any other possible received data, next part should be the file contents
 					cdc_ringbufRx_clear();
 
-					printf("sfile_ok\n");
+					printf("sfile_ok\n"); // Triggers in ScriptCommunicator to start sending
 				}
 				else
 				{

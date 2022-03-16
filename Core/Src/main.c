@@ -234,6 +234,7 @@ int main(void)
 	  bpCommTasks();
 
 	  Si46xx_Tasks();
+	  Si46xx_firmware_tasks(); // TODO: hier der richtige Ort?
 
 	  cdc_Interface_Tasks();
 
