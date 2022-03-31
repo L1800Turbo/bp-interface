@@ -54,6 +54,12 @@ enum Si46xx_SPI_commands {
 	SI46XX_GET_SERVICE_INFO			= 0xC0	/* Gets information about a service.													*/
 };
 
+// Possible subcommands to be called by SI46XX_FLASH_LOAD
+enum Si46xx_SPI_FlashLoad_SubCommands {
+	SI46XX_FLASH_WRITE_BLOCK 					= 0xF0, /* Write a block of bytes to the flash */
+	SI46XX_FLASH_WRITE_BLOCK_READBACK_VERIFY	= 0xF1, /* Write a block of bytes to the flash. Reads back the block after write to verify the block was written correctly by comparing the CRC32 */
+};
+
 typedef enum
 {
 	SI46XX_MSG_NONE = 0,

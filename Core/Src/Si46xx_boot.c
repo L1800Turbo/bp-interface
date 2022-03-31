@@ -30,12 +30,12 @@ extern struct Si46xx_Config Si46xxCfg;
 /* Private functions --------------------------------------------------------*/
 HAL_StatusTypeDef Si46xx_Send_PowerUp(void);
 HAL_StatusTypeDef Si46xx_Send_LoadInit(void);
-HAL_StatusTypeDef Si46xx_HostLoad(fw_source_dt fwSource, uint8_t * bufferPtr, uint32_t size);
+//HAL_StatusTypeDef Si46xx_HostLoad(fw_source_dt fwSource, uint8_t * bufferPtr, uint32_t size);
 HAL_StatusTypeDef Si46xx_Send_Boot(void);
 
 /* Configure sources for firmware */
 // TODO anders oder weg
-uint8_t Si46xx_Boot_SetSources(fw_source_dt srcBootloader_patch, fw_source_dt srcFirmware)
+/*uint8_t Si46xx_Boot_SetSources(fw_source_dt srcBootloader_patch, fw_source_dt srcFirmware)
 {
 	uint8_t retVal = 0;
 
@@ -58,7 +58,7 @@ uint8_t Si46xx_Boot_SetSources(fw_source_dt srcBootloader_patch, fw_source_dt sr
 	}
 
 	return retVal;
-}
+}*/
 
 /* Switch between the right boot state depending on the SPI status */
 Si46xx_BootStates_en getNextBootState(uint8_t * statusData, Si46xx_BootStates_en nextState_Error, Si46xx_BootStates_en nextState_MsgError, Si46xx_BootStates_en nextState_okay)
@@ -186,7 +186,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 				case HAL_OK:
 					Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT); // ms
 
-					if(firmware.fw_source == FW_SRC_USB) // If the current module should be transferred by USB
+					if(firmware.current_fw_source == FW_SRC_USB) // If the current module should be transferred by USB
 					{
 						firmware.fwBufPtr = 0;
 						firmware.fwBufSize = 0; // To be set by USB CDC function
@@ -303,13 +303,13 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 						HAL_GPIO_TogglePin(LED_GREEN_Port, LED_GREEN_Pin);
 
 						// Tasks to do on USB transfer
-						if(firmware.fw_source == FW_SRC_USB)
+						if(firmware.current_fw_source == FW_SRC_USB)
 						{
 							// Show CDC state machine that we're waiting for the next block
 							firmware.usbFw_wanted = USB_FW_WAITING;
 						}
 						// Tasks to do while transferring from uC flash
-						else if(firmware.fw_source == FW_SRC_UC)
+						else if(firmware.current_fw_source == FW_SRC_UC)
 						{
 							firmware.fwBufPtr = firmware.fwBufPtr + SI46XX_BOOT_MAX_BUF_SIZE;
 						}
@@ -319,7 +319,7 @@ Si46xx_state_en Si46xx_Boot_Tasks(void)
 					else // Nothing more to send, go back to load with next FW package or finish
 					{
 						// Tasks to do on USB transfer mode when transfer of file is finished
-						if(firmware.fw_source == FW_SRC_USB)
+						if(firmware.current_fw_source == FW_SRC_USB)
 						{
 							// Reset USB firmware transfer, if it was activated
 							firmware.usbFw_wanted = USB_FW_NONE;
@@ -504,51 +504,6 @@ HAL_StatusTypeDef Si46xx_Send_LoadInit(void) // TODO ist in functions...
 	data[1] = 0x00;
 
 	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
-
-	return state;
-}
-
-HAL_StatusTypeDef Si46xx_HostLoad(fw_source_dt fwSource, uint8_t * bufferPtr, uint32_t size)
-{
-	HAL_StatusTypeDef state = HAL_OK;
-	uint32_t i = 0;
-
-	if(size > 4092)
-	{
-		state = HAL_ERROR;
-		return state;
-	}
-
-	spiBuffer[0] = SI46XX_HOST_LOAD;
-	spiBuffer[1] = 0x00;
-	spiBuffer[2] = 0x00;
-	spiBuffer[3] = 0x00;
-
-
-	// If the firmware comes from the uC Flash
-	if(fwSource == FW_SRC_UC)
-	{
-		for(i=0; i<size; i++)
-		{
-			spiBuffer[i+4] = *bufferPtr;
-
-			bufferPtr++;
-		}
-	}
-	// If the firmware should be transferred from the USB buffer
-	else if(fwSource == FW_SRC_USB)
-	{
-		cdc_ringbufRx_get((uint8_t *) (spiBuffer+4), (size_t *) &size);
-	}
-	else // Firmware source not implemented
-	{
-		state = HAL_ERROR;
-		return state;
-	}
-
-	SI46XX_CS_ON();
-	state = HAL_SPI_Transmit_IT(Si46xxCfg.hspi, spiBuffer, size + 4);
-	// CS_OFF by INT
 
 	return state;
 }

@@ -114,7 +114,7 @@ static void MX_USART3_UART_Init(void);
 /* Printf for USB CDC */
 int _write(int file, char *ptr, size_t len)
 {
-	if(CDC_Transmit_FS(ptr, len) == USBD_OK)
+	if(CDC_Transmit_FS((uint8_t*) ptr, len) == USBD_OK)
 	{
 		return len;
 	}

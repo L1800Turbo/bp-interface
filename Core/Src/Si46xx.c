@@ -262,20 +262,19 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	Si46xxCfg.initConfig = init;
 	Si46xxCfg.hspi = hspi;
 
-	//Si46xxCfg.intstate = SI46XX_INTB_STATE;
-
 	Si46xxCfg.state = Si46xx_STATE_IDLE;
 	resetState = Si46xx_RST_SET;
 
-	// Initialize ring buffer
+	// Initialize ring buffer for messages
 	cb_init(&Si46xxCfg.cb, 10, sizeof(Si46xx_msg_dt));
 
 	//Si46xxCfg.timeoutValue = SI46XX_DEFAULT_SPI_WAIT;
 
+	// Start without interrupts
 	Si46xxCfg.isrState = ISR_INACTIVE;
 
 	// Configure default sources for firmware/patch
-	Si46xx_Boot_SetSources(FW_SRC_UC, FW_SRC_UC);
+	//Si46xx_Boot_SetSources(FW_SRC_UC, FW_SRC_UC); // TODO: Raus, stattdessen Si46xx_statusType Si46xx_firmware_init()
 
 	// Init first channel TODO später vom EEPROM?
 	Si46xxCfg.freqIndex = 0;

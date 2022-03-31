@@ -171,14 +171,14 @@ typedef struct // Struct for a frequency and channel
 /* Config enums -------------------------------------------------------------------------- */
 
 /* Possible sources for firmware */
-typedef enum
+enum fw_source
 {
 	FW_SRC_UC = 0,	/* Firmware on uC to be transferred to device 			*/
 	FW_SRC_USB,		/* Firmware on connected PC to be transferred by USB 	*/
 	FW_SRC_FLASH,	/* Firmware on flash connected to Si46xx				*/
 
 	FW_SRC_size
-}fw_source_dt;
+};
 
 typedef enum
 {
@@ -206,16 +206,15 @@ typedef struct
 		SPI_FW_IDLE = 0,
 		SPI_FW_BUSY
 	}fw_spi_busy;*/
-
+	uint32_t current_flash_address; // If external flash is used: the current address to use
 
 	// Which one is the current firmware source?
-	fw_source_dt fw_source;
+	enum fw_source current_fw_source;
 
 	usb_fw_en usbFw_wanted;
 
 	uint8_t * fwBufPtr;
 	uint32_t fwBufSize;
-	//size_t fwUsbBufSize; // the USB package size to check if a whole block is received by USB CDC
 }Si46xx_firmware_dt;
 
 

@@ -240,7 +240,7 @@ HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc()
 
 
 	// If the firmware comes from the uC Flash
-	if(firmware->fw_source == FW_SRC_UC)
+	if(firmware->current_fw_source == FW_SRC_UC)
 	{
 		for(i=0; i<size; i++)
 		{
@@ -250,7 +250,7 @@ HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc()
 		}
 	}
 	// If the firmware should be transferred from the USB buffer
-	else if(firmware->fw_source == FW_SRC_USB)
+	else if(firmware->current_fw_source == FW_SRC_USB)
 	{
 		cdc_ringbufRx_get((uint8_t *) (spiBuffer+4), (size_t *) &size);
 	}
@@ -265,6 +265,74 @@ HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc()
 	// CS_OFF by INT
 
 	Si46xx_SetWaitTime(50); // TODO: wird von der Fertig-Funktion überschrieben...
+
+	return state;
+}
+
+// Sub Function FLASH_WRITE_BLOCK of FLASH_LOAD
+/* Write a block of bytes to the flash.
+ * All the bytes on flash that are written must have been previously erased to 0xFF with the FLASH_ERASE_CHIP or FLASH_ERASE_SECTOR subcommands.
+ */
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_WriteBlock_sendFunc()
+{
+	HAL_StatusTypeDef state = HAL_OK;
+	uint32_t i = 0;
+
+	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
+
+	uint32_t size = (firmware->fwBufSize > 4084 ? 4084 : firmware->fwBufSize);
+
+	spiBuffer[0] = SI46XX_FLASH_LOAD;
+	spiBuffer[1] = SI46XX_FLASH_WRITE_BLOCK;
+	spiBuffer[2] = 0x0C;
+	spiBuffer[3] = 0xED;
+
+	// PAD0...3
+	spiBuffer[4] = 0x00;
+	spiBuffer[5] = 0x00;
+	spiBuffer[6] = 0x00;
+	spiBuffer[7] = 0x00;
+
+	// FLASH_ADDR
+	spiBuffer[ 8] = (firmware->current_flash_address >>  0) & 0xFF;
+	spiBuffer[ 9] = (firmware->current_flash_address >>  8) & 0xFF;
+	spiBuffer[10] = (firmware->current_flash_address >> 16) & 0xFF;
+	spiBuffer[11] = (firmware->current_flash_address >> 24) & 0xFF;
+
+	// SIZE
+	spiBuffer[12] = (size >>  0) & 0xFF;
+	spiBuffer[13] = (size >>  8) & 0xFF;
+	spiBuffer[14] = (size >> 16) & 0xFF;
+	spiBuffer[15] = (size >> 24) & 0xFF;
+
+	// If the firmware comes from the uC Flash
+	if(firmware->current_fw_source == FW_SRC_UC)
+	{
+		for(i=0; i<size; i++)
+		{
+			spiBuffer[i+16] = *firmware->fwBufPtr;
+
+			firmware->fwBufPtr++;
+		}
+	}
+	// If the firmware should be transferred from the USB buffer
+	else if(firmware->current_fw_source == FW_SRC_USB)
+	{
+		cdc_ringbufRx_get((uint8_t *) (spiBuffer+16), (size_t *) &size);
+	}
+	else // Firmware source not implemented
+	{
+		state = HAL_ERROR;
+		return state;
+	}
+
+	SI46XX_CS_ON();
+	state = HAL_SPI_Transmit_IT(Si46xxCfg.hspi, spiBuffer, size + 4);
+	// CS_OFF by INT
+
+	Si46xx_SetWaitTime(50); // TODO: wird von der Fertig-Funktion überschrieben...
+
+	firmware->current_flash_address += 4084;
 
 	return state;
 }

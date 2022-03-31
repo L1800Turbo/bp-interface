@@ -35,7 +35,7 @@ typedef enum
 
 Si46xx_state_en Si46xx_Boot_Tasks(void);
 
-uint8_t Si46xx_Boot_SetSources(fw_source_dt bootloader_patch, fw_source_dt firmware);
+//uint8_t Si46xx_Boot_SetSources(fw_source_dt bootloader_patch, fw_source_dt firmware);
 
 //uint8_t Si46xx_boot_setUSB_size(uint32_t size);
 
