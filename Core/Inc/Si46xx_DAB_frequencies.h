@@ -7,7 +7,6 @@
 
 #ifndef INC_SI46XX_DAB_FREQUENCIES_H_
 #define INC_SI46XX_DAB_FREQUENCIES_H_
-#warning "included more than once"
 #include <stdint.h>
 
 enum DAB_frequencies { // in kHz

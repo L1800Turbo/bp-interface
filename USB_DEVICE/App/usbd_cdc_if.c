@@ -439,10 +439,10 @@ static int8_t CDC_Receive_FS(uint8_t* Buf, uint32_t *Len)
   * @param  Len: Number of data to be sent (in bytes)
   * @retval USBD_OK if all operations are OK else USBD_FAIL or USBD_BUSY
   */
-uint8_t CDC_Transmit_FS(uint8_t* Buf, size_t Len)
+uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 {
-	uint8_t result = USBD_OK;
-	/* USER CODE BEGIN 7 */
+  uint8_t result = USBD_OK;
+  /* USER CODE BEGIN 7 */
 	// aus: https://nefastor.com/microcontrollers/stm32/usb/stm32cube-usb-device-library/communication-device-class/
 
 	//Step 1 : calculate the occupied space in the Tx FIFO
