@@ -16,18 +16,20 @@ enum Si46xx_firmware_state
 	Si46xx_FIRMWARE_STATE_IDLE = 0, // Nothing to do, transfer finished
 	Si46xx_FIRMWARE_STATE_WAITING,	// Wait for SPI transfer being finished
 	Si46xx_FIRMWARE_STATE_SEND		// Prepare block for SPI transfer and send
-
 }fw_state;
 
-Si46xx_statusType Si46xx_firmware_init(void)
+// TODO: Ruft die wer auf?
+void Si46xx_firmware_init(void)
 {
 	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
 
-	firmware->current_flash_address = 0x3000; // TODO: Erstmal einfach festgelegt
+	firmware->current_fw_destination = FW_DST_SI46XX_RAM; // Per default erstmal in den RAM
+	firmware->current_flash_address  = 0; // TODO: Erstmal einfach festgelegt
 }
 
 
 // TODO: vorbereiten, dass firmware gesendet wird, hier auch, dass auf den Flash geschrieben wird??
+// TODO: hier vielleicht einfach eine USB und eine Flash Version von machen?
 Si46xx_statusType Si46xx_send_firmware(enum fw_source fw_source, uint8_t * fwBufPtr, uint32_t fwBufSize)
 {
 	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
@@ -46,7 +48,15 @@ Si46xx_statusType Si46xx_send_firmware(enum fw_source fw_source, uint8_t * fwBuf
 
 			/* initiate process to PC */
 			// TODO: Fehlerbehandlung, wenn erkannt wird, dass gar kein PC angeschlossen ist
-			printf("sfile_FW_FIRMWARE\n");
+			if(Si46xxCfg.firmware.current_fw_destination == FW_DST_FLASH) // If next transfer should go to flash
+			{
+				printf("sfile_FW_FLASH\n");
+			}
+			else
+			{
+				printf("sfile_FW_RAM\n");
+			}
+
 		}
 		else // If the transfer should happen from µC ROM
 		{
@@ -82,6 +92,8 @@ void Si46xx_firmware_tasks(void)
 				if(Si46xxCfg.analyzedStatus != Si46xx_OK)
 				{
 					printf("Si46xx_firmware_transfer: Error in firmware transfer, setting back to idle... \n");
+					firmware->current_fw_destination = FW_DST_SI46XX_RAM; // Reset to write to RAM by default
+
 					fw_state = Si46xx_FIRMWARE_STATE_IDLE;
 					break;
 				}
@@ -114,6 +126,8 @@ void Si46xx_firmware_tasks(void)
 						firmware->usbFw_wanted = USB_FW_NONE;
 					}
 
+					firmware->current_fw_destination = FW_DST_SI46XX_RAM; // Reset to write to RAM by default
+
 					fw_state = Si46xx_FIRMWARE_STATE_IDLE;
 				}
 			}
@@ -135,8 +149,16 @@ void Si46xx_firmware_tasks(void)
 
 			// copy the data from uC flash or USB buffer onto SPI buffer and starts SPI transfer
 			// TODO: Erstmal nur Hostload, hier später dann auch auf Flash schreiben
+			// Flash Adresse müsste dann gesetzt werden
 
-			cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_HOST_LOAD]);
+			if(firmware->current_fw_destination == FW_DST_FLASH)
+			{
+				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_FLASH_WRITE_BLOCK]);
+			}
+			else
+			{
+				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_HOST_LOAD]);
+			}
 
 			// SPI message triggered, wait for finish now
 			fw_state = Si46xx_FIRMWARE_STATE_WAITING;

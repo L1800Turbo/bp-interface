@@ -86,9 +86,16 @@ typedef struct {
 
 state_flags_t stateFlags;
 
+// TODO Workaround-Funktionen für 2 Master auf gleicher Leitung
+uint8_t SPI_Set_Input;
+void Set_SPI_GPIO_Listen();
+void Set_SPI_GPIO_Send();
+
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define CS_SPI_FLASH_Pin GPIO_PIN_2
+#define CS_SPI_FLASH_GPIO_Port GPIOE
 #define CS_I2C_SPI_Pin GPIO_PIN_3
 #define CS_I2C_SPI_GPIO_Port GPIOE
 #define CS_SPI_SI46xx_Pin GPIO_PIN_4

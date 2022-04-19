@@ -577,6 +577,8 @@ void cdc_Ringbuf_Tasks(void)
 			{
 				cdc_rx_rb.bufferState = BUFFER_FREE;
 
+				HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_RESET);
+
 				// Receive the next packet
 				USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 			}

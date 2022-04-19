@@ -52,6 +52,42 @@ circular_buffer_status_en cb_push_back(circular_buffer *cb, const void *item)
     return CB_OK;
 }
 
+/* Get the first buffer item without taking it from the buffer */
+circular_buffer_status_en cb_get_front(circular_buffer *cb, void *item)
+{
+    if(cb->count == 0)
+    {
+        return CB_NO_DATA;
+    }
+
+    memcpy(item, cb->tail, cb->dt_Size);
+
+    return CB_OK;
+}
+
+/* Clear the first item from the buffer */
+circular_buffer_status_en cb_clear_front(circular_buffer *cb)
+{
+    if(cb->count == 0)
+    {
+        return CB_NO_DATA;
+    }
+
+    cb->tail = (char*)cb->tail + cb->dt_Size;
+
+    // If end is reached
+    if(cb->tail == cb->buffer_end)
+    {
+        cb->tail = cb->buffer;
+    }
+
+    cb->count--;
+
+    return CB_OK;
+}
+
+
+// TODO: noch alte funktion, die oberen sollen das dann abdecken, kann man hier dann einbauen...
 circular_buffer_status_en cb_pop_front(circular_buffer *cb, void *item)
 {
     if(cb->count == 0)

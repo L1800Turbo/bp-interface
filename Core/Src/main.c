@@ -53,6 +53,7 @@ array weiter ausbauen
 #include "usbd_cdc_if.h" // TODO auf dauer raus
 #include "cdc_interface.h"
 
+#include "SST25.h"
 
 #include "usbd_cdc.h" //test
 
@@ -68,7 +69,6 @@ array weiter ausbauen
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 
 /* USER CODE END PD */
 
@@ -161,12 +161,53 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart)
 	//bpMsgState.checkMsgFlg = 1; hier prüfen und oben aktivieren / kopieren?!?
 }
 
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) // Für Blauen Button
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	if(GPIO_Pin == GPIO_PIN_6)
 	{
 		set_Si46xx_ISR();
+
+		if(SPI_Set_Input == 1)
+		{
+			SPI_Set_Input = 0;
+			Set_SPI_GPIO_Send();
+		}
 	}
+}
+
+// Workaround For using two masters in parallel
+void Set_SPI_GPIO_Listen()
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+	GPIO_InitStruct.Pin = SPI1_SCK_Pin|SPI1_MISO_Pin|SPI1_MOSI_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+//	SPI_Set_Input = 1;
+	printf("Set SPI to listen\n");
+}
+
+// Aus void HAL_SPI_MspInit(SPI_HandleTypeDef* hspi) kopiert
+void Set_SPI_GPIO_Send()
+{
+	GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+	/**SPI1 GPIO Configuration
+	PA5     ------> SPI1_SCK
+	PA6     ------> SPI1_MISO
+	PA7     ------> SPI1_MOSI
+	*/
+	GPIO_InitStruct.Pin = SPI1_SCK_Pin|SPI1_MISO_Pin|SPI1_MOSI_Pin;
+	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+	GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
+	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+
+	//SPI_Set_Input = 0;
+	printf("Set SPI to send\n");
 }
 
 /* USER CODE END 0 */
@@ -178,6 +219,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) // Für Blauen Button
 int main(void)
 {
   /* USER CODE BEGIN 1 */
+	//extern uint8_t SPI_Flash_Active;
 
   /* USER CODE END 1 */
 
@@ -208,6 +250,7 @@ int main(void)
   bpCommInit();
 
   Si46xx_InitConfiguration(&hspi1);
+  SST25_Init(&hspi1);
 
   // start inactive DAB mode
   stateFlags.bpDabActive = bp_DAB_inactive;
@@ -224,6 +267,8 @@ int main(void)
 
   cdc_Interface_Init();
 
+  SPI_Set_Input = 0;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -234,14 +279,28 @@ int main(void)
 	  bpCommTasks();
 
 	  Si46xx_Tasks();
-	  Si46xx_firmware_tasks(); // TODO: hier der richtige Ort?
 
 	  cdc_Interface_Tasks();
 
 	  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1)
 	  {
 		  //HAL_GPIO_WritePin(Si46xx_RSTB_GPIO_Port, Si46xx_RSTB_Pin, GPIO_PIN_RESET); // Reset LOW halten
+		 // printf("Flash: %X \r", SST25_read_ID(&hspi1));
 	  }
+
+	  // Workarounds to use second SPI on same lines
+	  /*if((HAL_GPIO_ReadPin(CS_SPI_FLASH_GPIO_Port, CS_SPI_FLASH_Pin) == GPIO_PIN_RESET) && SPI_Flash_Active == 0 && SPI_Set_Input == 0)
+	  {
+		  Set_SPI_GPIO_Listen();
+		  SPI_Set_Input = 1;
+		  printf("Set SPI to listen\n");
+	  }
+	  else if((HAL_GPIO_ReadPin(CS_SPI_FLASH_GPIO_Port, CS_SPI_FLASH_Pin) == GPIO_PIN_SET) && SPI_Set_Input == 1)
+	  {
+		  Set_SPI_GPIO_Send();
+		  SPI_Set_Input = 0;
+		  printf("Set SPI to send\n");
+	  }*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -418,6 +477,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(CS_SPI_FLASH_GPIO_Port, CS_SPI_FLASH_Pin, GPIO_PIN_SET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, CS_I2C_SPI_Pin|CS_SPI_SI46xx_Pin|Si46xx_RSTB_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
@@ -426,6 +488,13 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, LD4_Pin|LD3_Pin|LD5_Pin|LD6_Pin
                           |Audio_RST_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : CS_SPI_FLASH_Pin */
+  GPIO_InitStruct.Pin = CS_SPI_FLASH_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(CS_SPI_FLASH_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : CS_I2C_SPI_Pin CS_SPI_SI46xx_Pin Si46xx_RSTB_Pin */
   GPIO_InitStruct.Pin = CS_I2C_SPI_Pin|CS_SPI_SI46xx_Pin|Si46xx_RSTB_Pin;

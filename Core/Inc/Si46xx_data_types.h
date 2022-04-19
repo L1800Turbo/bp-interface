@@ -211,6 +211,13 @@ typedef struct
 	// Which one is the current firmware source?
 	enum fw_source current_fw_source;
 
+	enum fw_dst
+	{
+		FW_DST_SI46XX_RAM = 0, // Write to RAM of Si46xx
+		FW_DST_FLASH,		   // Write to flash by Si46xx
+		FW_DST_SPI_FLASH	   // Write to flash by direct SPI communication
+	}current_fw_destination;
+
 	usb_fw_en usbFw_wanted;
 
 	uint8_t * fwBufPtr;
@@ -249,6 +256,8 @@ struct Si46xx_Config
 
 	/* firmware information */
 	Si46xx_firmware_dt firmware;
+	enum fw_source firmware_source;  /* Source for the current main firmware      */
+	uint32_t firmware_flash_address; /* Default flash address containing firmware */
 
 	/* Values for DAB mode */
 	enum Si46xx_Image image;

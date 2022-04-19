@@ -1,6 +1,8 @@
 /*
  * Si46xx_SPI_functions.c
  *
+ * Functions to be called by state machine
+ *
  *  Created on: Dec 31, 2021
  *      Author: kai
  */
@@ -8,10 +10,16 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "usbd_cdc_if.h" // To get USB data from the ring buffer
+
 /* Private functions ------------------------------------------- */
 Si46xx_statusType Si46xx_Msg_ReadReply_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_PowerUp_sendFunc();
 HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_LoadImage_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_WriteBlock_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseSector_sendFunc();
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseChip_sendFunc();
 HAL_StatusTypeDef Si46xx_Msg_LoadInit_sendFunc();
 HAL_StatusTypeDef Si46xx_Msg_Boot_sendFunc();
 
@@ -57,6 +65,30 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.sendFunc    = Si46xx_Msg_HostLoad_sendFunc,
 				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
 		},	/* SI46XX_MSG_HOST_LOAD */
+		{
+				.msgIndex    = SI46XX_MSG_FLASH_LOAD_IMG,
+				.msgName	 = "SI46XX_MSG_FLASH_LOAD_IMG",
+				.sendFunc    = Si46xx_Msg_FlashLoad_LoadImage_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_FLASH_LOAD_IMG */
+		{
+				.msgIndex    = SI46XX_MSG_FLASH_WRITE_BLOCK,
+				.msgName	 = "SI46XX_MSG_FLASH_WRITE_BLOCK",
+				.sendFunc    = Si46xx_Msg_FlashLoad_WriteBlock_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_FLASH_WRITE_BLOCK */
+		{
+				.msgIndex    = SI46XX_MSG_FLASH_ERASE_SECTOR,
+				.msgName	 = "SI46XX_MSG_FLASH_ERASE_SECTOR",
+				.sendFunc    = Si46xx_Msg_FlashLoad_EraseSector_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_FLASH_ERASE_SECTOR */
+		{
+				.msgIndex    = SI46XX_MSG_FLASH_ERASE_CHIP,
+				.msgName	 = "SI46XX_MSG_FLASH_ERASE_CHIP",
+				.sendFunc    = Si46xx_Msg_FlashLoad_EraseChip_sendFunc,
+				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
+		},	/* SI46XX_MSG_FLASH_ERASE_CHIP */
 		{
 				.msgIndex    = SI46XX_MSG_LOAD_INIT,
 				.msgName	 = "SI46XX_MSG_LOAD_INIT",
@@ -170,6 +202,12 @@ void HAL_SPI_TxCpltCallback (SPI_HandleTypeDef * hspi)
 	}
 
 	// TODO: hier dann eigwentlich das Wait erst hin ohne ISR, v.a. beim Firmqare übertragen
+
+	// Workaround 2 SPI-Master: Auf Input stellen
+	if(SPI_Set_Input == 1)
+	{
+		Set_SPI_GPIO_Listen();
+	}
 }
 
 /**
@@ -215,11 +253,11 @@ Si46xx_statusType Si46xx_Msg_ReadReply_receiveFunc()
 
 	if(state != Si46xx_OK)
 	{
-		printf("Si46xx_Msg_ReadReply_receiveFunc: NOT okay (evtl busy)!\n");
+		//printf("Si46xx_Msg_ReadReply_receiveFunc: NOT okay (evtl busy)!\n"); // TODO: Hier auch einen Timeout einbauen?
 		return state;
 	}
 
-	printf("Si46xx_Msg_ReadReply_receiveFunc: okay\n");
+	//printf("Si46xx_Msg_ReadReply_receiveFunc: okay\n");
 
 	return state;
 }
@@ -269,6 +307,38 @@ HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc()
 	return state;
 }
 
+// Sub Function FLASH_LOAD_IMG of FLASH_LOAD
+/* Load a firmware image or patch from flash.
+ * This is the same as the FLASH_LOAD command but is represented here following the flash subcommand format.
+ */
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_LoadImage_sendFunc()
+{
+	uint8_t data[12];
+	HAL_StatusTypeDef state = HAL_OK;
+
+	data[0] = SI46XX_FLASH_LOAD;
+	data[1] = SI46XX_FLASH_LOAD_IMG;
+	data[2] = 0x00;
+	data[3] = 0x00;
+
+	data[4] = (Si46xxCfg.firmware_flash_address >>  0) & 0xFF;
+	data[5] = (Si46xxCfg.firmware_flash_address >>  8) & 0xFF;
+	data[6] = (Si46xxCfg.firmware_flash_address >> 16) & 0xFF;
+	data[7] = (Si46xxCfg.firmware_flash_address >> 24) & 0xFF;
+
+	data[8] = 0x00;
+	data[9] = 0x00;
+	data[10] = 0x00;
+	data[11] = 0x00;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 12);
+
+	// Workaround, wenn sich beide die Leitung teilen: Wenn CS losgelassen wird, auf Eingang Schalten
+	SPI_Set_Input = 1;
+
+	return state;
+}
+
 // Sub Function FLASH_WRITE_BLOCK of FLASH_LOAD
 /* Write a block of bytes to the flash.
  * All the bytes on flash that are written must have been previously erased to 0xFF with the FLASH_ERASE_CHIP or FLASH_ERASE_SECTOR subcommands.
@@ -280,7 +350,7 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_WriteBlock_sendFunc()
 
 	Si46xx_firmware_dt * firmware = &Si46xxCfg.firmware;
 
-	uint32_t size = (firmware->fwBufSize > 4084 ? 4084 : firmware->fwBufSize);
+	uint32_t size = (firmware->fwBufSize > 256 ? 256 : firmware->fwBufSize);
 
 	spiBuffer[0] = SI46XX_FLASH_LOAD;
 	spiBuffer[1] = SI46XX_FLASH_WRITE_BLOCK;
@@ -327,12 +397,50 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_WriteBlock_sendFunc()
 	}
 
 	SI46XX_CS_ON();
-	state = HAL_SPI_Transmit_IT(Si46xxCfg.hspi, spiBuffer, size + 4);
+	state = HAL_SPI_Transmit_IT(Si46xxCfg.hspi, spiBuffer, size + 16);
 	// CS_OFF by INT
 
 	Si46xx_SetWaitTime(50); // TODO: wird von der Fertig-Funktion überschrieben...
 
-	firmware->current_flash_address += 4084;
+	firmware->current_flash_address += size;
+
+	return state;
+}
+
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseSector_sendFunc() // TODO: Adresse noch nicht definiert
+{
+	uint8_t data[8];
+	HAL_StatusTypeDef state = HAL_OK;
+
+	data[0] = SI46XX_FLASH_LOAD;
+	data[1] = SI46XX_FLASH_ERASE_SECTOR;
+	data[2] = 0xC0;
+	data[3] = 0xDE;
+
+	/* Starting address on flash of the sector to erase, byte offset from the start of flash.
+	 * Note: sector_addr[23..0] are used, sector_addr[31..24] are ignored.
+	 * The least significant bits that would be masked by the sector boundary are ignored.*/
+	data[4] = 0;
+	data[5] = 0;
+	data[6] = 0;
+	data[7] = 0;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 8);
+
+	return state;
+}
+
+HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseChip_sendFunc()
+{
+	uint8_t data[4];
+	HAL_StatusTypeDef state = HAL_OK;
+
+	data[0] = SI46XX_FLASH_LOAD;
+	data[1] = SI46XX_FLASH_ERASE_CHIP;
+	data[2] = 0xDE;
+	data[3] = 0xC0;
+
+	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 4);
 
 	return state;
 }
@@ -470,7 +578,7 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 {
 	//uint8_t data[7]; // TODO 7, temporär festgelegt, was ist der maximale Wert hier?
 	uint8_t * data = spiBuffer;
-	dab_channel_dt * chan = &Si46xxCfg.channelData.channel;
+	dab_channel_dt * chan = &Si46xxCfg.channelData;
 
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 6);
 	//uint16_t length = 0;
@@ -1004,7 +1112,7 @@ Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc()
 	{
 		// Send frequency list
 		printf("sFreqList_%d\n", sizeof(DAB_frequency_list));
-		CDC_Transmit_FS(DAB_frequency_list, sizeof(DAB_frequency_list));
+		CDC_Transmit_FS((uint8_t*) DAB_frequency_list, sizeof(DAB_frequency_list));
 	}
 
 	/*for(uint8_t i=0x08; i<0xC7; i+=4)

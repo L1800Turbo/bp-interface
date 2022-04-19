@@ -10,6 +10,7 @@
 // Access to functions for firmware transfer
 #include "Si46xx_firmware_transfer.h"
 
+#include "SST25.h"
 
 /* Private variable definitions --------------------------------------- */
 char cdcBuf[15];
@@ -113,13 +114,35 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 
 	if(strncmp(messageStr, "ver", 3) == 0)
 	{
+		extern struct Si46xx_Config Si46xxCfg;
 		printf("ver 0.01\n");
 
-		// Send source configuration
-		//extern Si46xx_firmware_dt firmware;
-
 		// Send string with current firmware configuration
-		//printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]); TODO umbauen, einbauen
+		printf("sfw_src_%d_%lu\n", (uint8_t) Si46xxCfg.firmware_source, Si46xxCfg.firmware_flash_address);
+	}
+	else if(strncmp(messageStr, "flash", 5) == 0)
+	{
+		if(strncmp(messageStr, "flash_ident", 11) == 0)
+		{
+			uint8_t manufacturer;
+			uint8_t device;
+			SST25_read_ID(&manufacturer, &device);
+
+			SST25_read_Status();
+
+			printf("flash_ident_%X_%X\n", manufacturer, device);
+		}
+		else if(strncmp(messageStr, "flash_add", 9) == 0)
+		{
+			uint32_t address = atoi(messageStr+10);
+
+			SST25_Set_Address(address);
+		}
+		else if(strncmp(messageStr, "flash_write", 11) == 0) // TODO: einfach aus µC-Flash schreiben
+		{
+			SST25_Write_Flash_File();
+		}
+
 	}
 	else if(messageStr[0] == 's')
 	{
@@ -156,7 +179,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			//printf("cmdIndex %d", cmdIndex);
 			if(cmdIndex > 0 && cmdIndex < SI46XX_MSG_SIZE)
 			{
-				printf("Got command index %d\n", cmdIndex);
+				//printf("Got command index %d\n", cmdIndex);
 				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[cmdIndex]); //SI46XX_MSG_REFRESH_SYS_STATE z.B. 1
 			}
 		}
@@ -164,18 +187,38 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		// If the boot source configuration should be changed
 		else if(strncmp(messageStr, "sfw_src", 7) == 0)
 		{
-			if(messageStr[7] - 0x30 < FW_SRC_size && messageStr[8] - 0x30 < FW_SRC_size)
+			extern struct Si46xx_Config Si46xxCfg;
+
+			uint8_t srcIndex = atoi(messageStr+7);
+			if(srcIndex < FW_SRC_size)
 			{
-				//Si46xx_Boot_SetSources(messageStr[7] - 0x30, messageStr[8] - 0x30);
+				Si46xxCfg.firmware_source = srcIndex;
 			}
 			else
 			{
 				printf("Error setting boot sources!\n");
 			}
 
-			// TODO temporär, eine firmware protected get function bauen...
-			//extern Si46xx_firmware_dt firmware;
-			//printf("sfw_src_1_%d_2_%d\n", (uint8_t) firmware.fw_source[1], (uint8_t) firmware.fw_source[2]);
+			printf("sfw_src_%d_%lu\n", (uint8_t) Si46xxCfg.firmware_source, Si46xxCfg.firmware_flash_address);
+		}
+
+		// Change the default flash address for the firmware to boot the device from
+		else if(strncmp(messageStr, "sfw_flash_add", 13) == 0)
+		{
+			extern struct Si46xx_Config Si46xxCfg;
+			uint32_t address = atoi(messageStr+13);
+
+			Si46xxCfg.firmware_flash_address = address;
+		}
+
+		// Set the flash address to write data to
+		else if(strncmp(messageStr, "sfw_flash_write_add", 19) == 0)
+		{
+			extern struct Si46xx_Config Si46xxCfg;
+			uint32_t address = atoi(messageStr+19);
+
+			Si46xxCfg.firmware.current_fw_destination = FW_DST_FLASH;
+			Si46xxCfg.firmware.current_flash_address  = address;
 		}
 
 		// Tune to a frequency, refresh the contents of it: stune_n
@@ -260,7 +303,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			}
 		}
 
-		else if(strncmp(messageStr, "sload_fw", 8) == 0)
+		else if(strncmp(messageStr, "sload_fw", 8) == 0) // TODO: noch umbenennen, wenn das auch für Flash-FW-Transfer genutzt wird
 		{
 			// TODO: Temporäte Lösung
 			//extern void Si46xx_Boot(void);

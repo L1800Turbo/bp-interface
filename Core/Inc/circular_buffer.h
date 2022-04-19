@@ -31,7 +31,9 @@ typedef enum {
 
 void cb_init(circular_buffer *cb, size_t capacity, size_t dt_Size);
 circular_buffer_status_en cb_push_back(circular_buffer *cb, const void *item);
-circular_buffer_status_en cb_pop_front(circular_buffer *cb, void *item);
+circular_buffer_status_en cb_get_front(circular_buffer *cb, void *item);
+circular_buffer_status_en cb_clear_front(circular_buffer *cb);
+circular_buffer_status_en cb_pop_front(circular_buffer *cb, void *item); // TODO: to be removed
 void cb_free(circular_buffer *cb);
 
 

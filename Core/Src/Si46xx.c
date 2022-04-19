@@ -1,7 +1,7 @@
 /*
  * Si46xx.c
  *
- * Generic functions to work with Si46xx
+ * Generic functions and state machine to work with Si46xx
  *
  *  Created on: 21.03.2021
  *      Author: kai
@@ -70,8 +70,12 @@ uint8_t Si46xx_isBusy(void) // TODO: Als Busy-Abfrage einbauen !!!! DAS GEHT SO 
 	return Si46xxCfg.cb.count || Si46xxCfg.state != Si46xx_STATE_IDLE;
 }
 
+
 void Si46xx_Tasks(void)
 {
+	// Run sub-state machine for firmware jobs
+	Si46xx_firmware_tasks();
+
 	if(Si46xx_RemainingTimeLeft() == TIME_LEFT)
 	{
 		return;
@@ -107,9 +111,10 @@ void Si46xx_Tasks(void)
 			// allgemeinen Reply-Pointer bauen? Also auf die Antwortbytes, dass er die Ablegt? Aber dann müsste er in der allgemeinen Auswertefkt ja wissen, was er damit soll...
 
 
-			if(cb_pop_front(&Si46xxCfg.cb, &currentWorkingMsg) == CB_OK)
+			//if(cb_pop_front(&Si46xxCfg.cb, &currentWorkingMsg) == CB_OK)
+			if(cb_get_front(&Si46xxCfg.cb, &currentWorkingMsg) == CB_OK)
 			{
-				printf("Si46xx: Befehl '%s' liegt auf dem Stack... (count: %d)\n", currentWorkingMsg.msgName, Si46xxCfg.cb.count);
+				printf("Si46xx: Got command '%s'...\n", currentWorkingMsg.msgName);
 
 				Si46xxCfg.state = Si46xx_STATE_IDLE; // Back to idle as default, to be changed if message could be sent properly
 				// TODO: Hier nicht IDLE hin! das darf erst später gesetzt werden, sonst glauben andere funktionien, diese mach hat nichts zu tun
@@ -139,7 +144,7 @@ void Si46xx_Tasks(void)
 					case HAL_BUSY:
 					case HAL_TIMEOUT:
 						printf("Si46xx: SPI-Busy / Timeout, nochmal...\n");
-						cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // TODO: eine aktuell beschäftigte Funktion sollte am Anfang bleiben!
+						//cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // TODO: eine aktuell beschäftigte Funktion sollte am Anfang bleiben!
 						Si46xx_SetWaitTime(100);
 
 						break;
@@ -187,7 +192,7 @@ void Si46xx_Tasks(void)
 					Si46xxCfg.isrState = ISR_UNSET;
 				}
 
-				// First flag TODO Test
+				// First flag TODO Test -> in Boot-Befehl oder danach?
 				/*if(Si46xxCfg.isrState == ISR_FIRST_FLAG && (HAL_GPIO_ReadPin(Si46xx_INTB_GPIO_Port, Si46xx_INTB_Pin) == GPIO_PIN_RESET))
 				{
 					Si46xxCfg.isrState = ISR_UNSET;
@@ -199,12 +204,15 @@ void Si46xx_Tasks(void)
 				{
 					case Si46xx_OK:
 						printf("Si46xx: Receive function OK, back to idle...\n\n");
+
+						cb_clear_front(&Si46xxCfg.cb); // receive ok, we can take this message from the ring buffer
+
 						Si46xxCfg.state = Si46xx_STATE_IDLE;
 						break;
 
 					case Si46xx_SPI_ERROR:
 						printf("Si46xx: SPI Error from receive function, msg back on stack\n");
-						cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // otherwise put it back on stack
+						//cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // otherwise put it back on stack
 						Si46xx_SetWaitTime(100);
 
 						break;
@@ -218,7 +226,7 @@ void Si46xx_Tasks(void)
 						}
 						// otherwise no break, continue with error
 					case Si46xx_MESSAGE_ERROR:
-						printf("Si46xx: Error from receive function!\n"); // TODO: hier noch den Ringbuffer leeren?
+						printf("Si46xx: Error from receive function!\n");
 						Si46xx_SetWaitTime(100);
 
 						// Clear message buffer
@@ -230,8 +238,14 @@ void Si46xx_Tasks(void)
 
 					case Si46xx_DEVICE_ERROR: // Serious error, reset device
 						printf("Si46xx: Device error in receive function, resetting Si46xx...\n");
+
+						// Clear message buffer
+						cb_free(&Si46xxCfg.cb);
+
 						//Si46xx_Boot(); // TODO: Temporärer Befehl
 						Si46xx_Reset();// TODO: auch Temporärer Befehl so alleine.
+
+						// TODO: hauptroutine sollte dann auhc wissen, dass sie neu booten muss
 
 						break;
 				}
@@ -273,8 +287,9 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	// Start without interrupts
 	Si46xxCfg.isrState = ISR_INACTIVE;
 
-	// Configure default sources for firmware/patch
-	//Si46xx_Boot_SetSources(FW_SRC_UC, FW_SRC_UC); // TODO: Raus, stattdessen Si46xx_statusType Si46xx_firmware_init()
+	// Firmware configuration
+	Si46xxCfg.firmware_source        = FW_SRC_FLASH; // Set default source
+	Si46xxCfg.firmware_flash_address = 0x000; // 0x200
 
 	// Init first channel TODO später vom EEPROM?
 	Si46xxCfg.freqIndex = 0;
@@ -296,22 +311,6 @@ void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data)
 	status->ERRNR    = (data[3] & 0x01);
 }
 
-/* Functions called by state machine ---------------------------------------------------*/
-
-HAL_StatusTypeDef Si46xx_Send_GetSysState(void) // TODO weg
-{
-	uint8_t data[2];
-	HAL_StatusTypeDef state = HAL_OK;
-
-	data[0] = SI46XX_GET_SYS_STATE;
-	data[1] = 0x00;
-
-	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
-
-	return state;
-}
-
-
 /*
  * Analyze last status message
  */
@@ -328,7 +327,7 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 
 			if(deviceStatus->ERR_CMD == Si46xx_ERR_ERROR)
 			{
-				printf("Si46xx_Boot: Command error, Bad command, see reply byte 4 for details\n");
+				printf("Si46xx.c Command error, Bad command, see reply byte 4 for details\n");
 				status = Si46xx_MESSAGE_ERROR;
 			}
 

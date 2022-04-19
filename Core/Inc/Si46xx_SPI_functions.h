@@ -56,8 +56,12 @@ enum Si46xx_SPI_commands {
 
 // Possible subcommands to be called by SI46XX_FLASH_LOAD
 enum Si46xx_SPI_FlashLoad_SubCommands {
+	SI46XX_FLASH_LOAD_IMG						= 0x00, /* Load a boot_img from flash */
 	SI46XX_FLASH_WRITE_BLOCK 					= 0xF0, /* Write a block of bytes to the flash */
 	SI46XX_FLASH_WRITE_BLOCK_READBACK_VERIFY	= 0xF1, /* Write a block of bytes to the flash. Reads back the block after write to verify the block was written correctly by comparing the CRC32 */
+
+	SI46XX_FLASH_ERASE_SECTOR					= 0xFE, /* Erase a single sector of flash */
+	SI46XX_FLASH_ERASE_CHIP                     = 0xFF, /* Erase the entire flash */
 };
 
 typedef enum
@@ -68,6 +72,10 @@ typedef enum
 
 	// Flash commands
 	// TODO: die FLASH_LOAD-Kommandos mit Subcommand einbauen
+	SI46XX_MSG_FLASH_LOAD_IMG,
+	SI46XX_MSG_FLASH_WRITE_BLOCK,
+	SI46XX_MSG_FLASH_ERASE_SECTOR,
+	SI46XX_MSG_FLASH_ERASE_CHIP,
 
 	SI46XX_MSG_LOAD_INIT,
 	SI46XX_MSG_BOOT,
