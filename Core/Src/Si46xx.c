@@ -8,6 +8,7 @@
 
  */
 #include "Si46xx.h"
+#include "Si46xx_firmware_transfer.h"
 
 
 struct Si46xx_Config Si46xxCfg;
@@ -16,7 +17,7 @@ Si46xx_msg_dt currentWorkingMsg;
 
 /* Private functions ------------------------------------------- */
 extern void Si46xx_Boot(void);
-Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len); // todo müsste eigentlich in header
+
 
 /* Private variables ------------------------------------------- */
 enum Si46xx_reset
@@ -62,16 +63,147 @@ void Si46xx_Reset(void)
 	Si46xx_Reset_Status();
 
 	resetState = Si46xx_RST_SET;
-	Si46xxCfg.state = Si46xx_STATE_RESET;
+	Si46xxCfg.function_state = Si46xx_STATE_RESET;
 }
 
 uint8_t Si46xx_isBusy(void) // TODO: Als Busy-Abfrage einbauen !!!! DAS GEHT SO NICHT, der hat 0 und ist in IDLE, wenn er sendet
 {
-	return Si46xxCfg.cb.count || Si46xxCfg.state != Si46xx_STATE_IDLE;
+	return Si46xxCfg.cb.count || Si46xxCfg.function_state != Si46xx_STATE_IDLE;
 }
 
+/* State machine to control the radio functions, boot, ... */
+// TODO: Timeouts einbauen
+void Si46xx_radio_tasks(void)
+{
+	switch(Si46xxCfg.radio_states)
+	{
+		case Si46xx_Radio_Start:
+			// Reset device
+			Si46xx_Reset();
 
-void Si46xx_Tasks(void)
+			// Send power up
+			Si46xx_Push(SI46XX_MSG_POWER_UP);
+
+			Si46xxCfg.radio_states++;
+			break;
+
+		case Si46xx_Radio_Start_Wait:
+			if(!Si46xx_isBusy()) // TODO: genau beobachten, die Funktion passt noch nicht ganz
+			{
+				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
+				{
+					printf("Si46xx_Radio_Start_Wait: Si46xx_OK\n");
+					Si46xxCfg.radio_states++;
+				}
+			}
+			break;
+
+		case Si46xx_Radio_Patch:
+			Si46xx_Push(SI46XX_MSG_LOAD_INIT); // TODO: würde er dann mehrmals aufrufen, wenn das unten nicht OK ist
+			if(Si46xx_send_firmware(FW_SRC_UC, (uint8_t *) &Si46xx_Rom00Patch016, sizeof(Si46xx_Rom00Patch016)) == Si46xx_OK)
+			{
+				Si46xxCfg.radio_states++;
+			}
+			else
+			{
+				// TODO: Warten?
+			}
+			break;
+
+		case Si46xx_Radio_Patch_Wait:
+			if(!Si46xx_isBusy() && !Si46xx_firmware_isBusy()) // TODO: genau beobachten, die Funktion passt noch nicht ganz
+			{
+				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
+				{
+					printf("Si46xx_Radio_Patch_Wait: Si46xx_OK\n");
+					Si46xxCfg.radio_states++;
+				}
+			}
+			break;
+
+		case Si46xx_Radio_FlashFirmware:
+			Si46xx_Push(SI46XX_MSG_LOAD_INIT);
+
+			Si46xxCfg.firmware_flash_address = 0x0000;
+			Si46xx_Push(SI46XX_MSG_FLASH_LOAD_IMG);
+
+			Si46xxCfg.radio_states++;
+			break;
+
+		case Si46xx_Radio_FlashFirmware_Wait:
+			if(!Si46xx_isBusy()) // TODO: genau beobachten, die Funktion passt noch nicht ganz
+			{
+				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
+				{
+					printf("Si46xx_Radio_FlashFirmware_Wait: Si46xx_OK\n");
+					Si46xxCfg.radio_states++;
+				}
+			}
+			break;
+
+		case Si46xx_Radio_Boot:
+			Si46xx_Push(SI46XX_MSG_BOOT);
+			Si46xx_Push(SI46XX_MSG_REFRESH_SYS_STATE);
+			Si46xxCfg.radio_states++;
+			break;
+
+		case Si46xx_Radio_Boot_Wait:
+			if(!Si46xx_isBusy()) // TODO: genau beobachten, die Funktion passt noch nicht ganz
+			{
+				if(Si46xxCfg.analyzedStatus == Si46xx_OK && Si46xxCfg.image == Si46xx_DAB)
+				{
+					printf("Si46xx_Radio_Boot_Wait: Si46xx_OK, DAB loaded");
+					Si46xxCfg.radio_states++;
+				}
+				else
+				{
+					printf("Boot not successful!\n");
+					Si46xxCfg.radio_states = Si46xx_Radio_Idle;
+				}
+			}
+			break;
+
+		case Si46xx_Radio_Config:
+
+			// TODO: Hier würde dann das Adjust Properties aus dem Programming Guide kommen
+
+			// Set frequency list from DAB_frequency_dt DAB_frequency_list[DAB_Chan_SIZE];
+			Si46xx_Push(SI46XX_MSG_SET_FREQ_LIST);
+			Si46xx_Push(SI46XX_MSG_GET_FREQ_LIST); // For debugging -> will update client interface
+			break;
+
+		case Si46xx_Radio_Config_Wait:
+			if(!Si46xx_isBusy()) // TODO: genau beobachten, die Funktion passt noch nicht ganz
+			{
+				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
+				{
+					printf("Si46xx_Radio_Config_Wait: Si46xx_OK");
+					Si46xxCfg.radio_states = Si46xx_Radio_Idle;
+				}
+			}
+			break;
+
+		case Si46xx_Radio_Idle:
+
+			break;
+	}
+
+	/*
+	 * TODO:
+	 * - Reset lösen
+	 * - Start-Befehl
+	 * - prepload + firmware-patch
+	 * - prepload + fw von spi-flash
+	 * - boot
+	 *
+	 * - senderliste senden und laden
+	 *
+	 * - auf einen Sender tunen?
+	 */
+}
+
+/* State machine taking care of the SPI communication funcitons */
+void Si46xx_function_tasks(void)
 {
 	// Run sub-state machine for firmware jobs
 	Si46xx_firmware_tasks();
@@ -81,12 +213,14 @@ void Si46xx_Tasks(void)
 		return;
 	}
 
-	switch(Si46xxCfg.state)
+	switch(Si46xxCfg.function_state)
 	{
 		case Si46xx_STATE_IDLE:
 
 			// React to interrupt flags
 			// If service list update is available
+
+			// TODO: Wenn er aus ist, sollte er hier nicht hin....
 			if(Si46xxCfg.events.service_list_int == 1)
 			{
 				Si46xxCfg.events.service_list_int = 0;
@@ -96,7 +230,7 @@ void Si46xx_Tasks(void)
 
 			if(Si46xxCfg.cb.count > 0)
 			{
-				Si46xxCfg.state = Si46xx_STATE_SENDING;
+				Si46xxCfg.function_state = Si46xx_STATE_SENDING;
 			}
 			break;
 
@@ -116,7 +250,7 @@ void Si46xx_Tasks(void)
 			{
 				printf("Si46xx: Got command '%s'...\n", currentWorkingMsg.msgName);
 
-				Si46xxCfg.state = Si46xx_STATE_IDLE; // Back to idle as default, to be changed if message could be sent properly
+				//Si46xxCfg.function_state = Si46xx_STATE_IDLE; // Back to idle as default, to be changed if message could be sent properly
 				// TODO: Hier nicht IDLE hin! das darf erst später gesetzt werden, sonst glauben andere funktionien, diese mach hat nichts zu tun
 
 				// Unset ISR if set before, not if not activated
@@ -134,11 +268,12 @@ void Si46xx_Tasks(void)
 							Si46xx_SetWaitTime(SI46XX_DEFAULT_SPI_WAIT);
 						}
 
-						Si46xxCfg.state = Si46xx_STATE_BUSY;
+						Si46xxCfg.function_state = Si46xx_STATE_BUSY;
 						break;
 
 					case HAL_ERROR:
 						printf("Si46xx: SPI-Error in Sending function!\n");
+						Si46xxCfg.function_state = Si46xx_STATE_IDLE;
 						break;
 
 					case HAL_BUSY:
@@ -147,13 +282,15 @@ void Si46xx_Tasks(void)
 						//cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // TODO: eine aktuell beschäftigte Funktion sollte am Anfang bleiben!
 						Si46xx_SetWaitTime(100);
 
+						//TODO: Si46xxCfg.function_state so lassen, oder?
+
 						break;
 				}
 			}
 			else // Reset if getting a message wasn't possible
 			{
 				printf("Si46xx: Couldn't fetch expected message from stack!\n");
-				Si46xxCfg.state = Si46xx_STATE_IDLE;
+				Si46xxCfg.function_state = Si46xx_STATE_IDLE;
 			}
 
 			break;
@@ -173,7 +310,7 @@ void Si46xx_Tasks(void)
 					SI46XX_RST_OFF();
 					Si46xx_SetWaitTime(10); // TODO Datenblatt ist 3.2ms to wait after RST
 
-					Si46xxCfg.state = Si46xx_STATE_IDLE; // Leave reset state
+					Si46xxCfg.function_state = Si46xx_STATE_IDLE; // Leave reset state
 					break;
 			}
 			break;
@@ -207,11 +344,11 @@ void Si46xx_Tasks(void)
 
 						cb_clear_front(&Si46xxCfg.cb); // receive ok, we can take this message from the ring buffer
 
-						Si46xxCfg.state = Si46xx_STATE_IDLE;
+						Si46xxCfg.function_state = Si46xx_STATE_IDLE;
 						break;
 
 					case Si46xx_SPI_ERROR:
-						printf("Si46xx: SPI Error from receive function, msg back on stack\n");
+						printf("Si46xx: SPI Error from receive function, keep msg on stack\n");
 						//cb_push_back(&Si46xxCfg.cb, &currentWorkingMsg); // otherwise put it back on stack
 						Si46xx_SetWaitTime(100);
 
@@ -233,7 +370,7 @@ void Si46xx_Tasks(void)
 						cb_free(&Si46xxCfg.cb);
 
 						// TODO: auf Idle richtig hier?
-						Si46xxCfg.state = Si46xx_STATE_IDLE;
+						Si46xxCfg.function_state = Si46xx_STATE_IDLE;
 						break;
 
 					case Si46xx_DEVICE_ERROR: // Serious error, reset device
@@ -276,7 +413,8 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	Si46xxCfg.initConfig = init;
 	Si46xxCfg.hspi = hspi;
 
-	Si46xxCfg.state = Si46xx_STATE_IDLE;
+	Si46xxCfg.radio_states = Si46xx_Radio_Idle;
+	Si46xxCfg.function_state = Si46xx_STATE_IDLE;
 	resetState = Si46xx_RST_SET;
 
 	// Initialize ring buffer for messages
@@ -286,6 +424,8 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 
 	// Start without interrupts
 	Si46xxCfg.isrState = ISR_INACTIVE;
+
+	Si46xxCfg.events.service_list_int = 0;
 
 	// Firmware configuration
 	Si46xxCfg.firmware_source        = FW_SRC_FLASH; // Set default source
@@ -297,94 +437,7 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	return HAL_OK;
 }
 
-void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data)
-{
-	/* Progress into status variables */
-	status->CTS      = (data[0] & 0x80)>>7;
-	status->ERR_CMD  = (data[0] & 0x40)>>6;
-	status->STCINT   = (data[0] & 0x01);
-	status->PUP      = (data[3] & 0xC0)>>6;
-	status->RFFE_ERR = (data[3] & 0x20)>>5;
-	status->REPOFERR = (data[3] & 0x08)>>3;
-	status->CMDOFERR = (data[3] & 0x04)>>2;
-	status->ARBERR   = (data[3] & 0x02)>>1;
-	status->ERRNR    = (data[3] & 0x01);
-}
 
-/*
- * Analyze last status message
- */
-Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
-{
-	Si46xx_statusType status = Si46xx_BUSY;
-	Si46xx_Status_Values_dt * deviceStatus = &Si46xxCfg.deviceStatus;
-
-	switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, len))
-	{
-		case HAL_OK:
-			progress_StatusBytes(deviceStatus, &data[1]); // TODO Passt das noch?
-			//progress_StatusBytes(deviceStatus, &spiBuffer[1]); ortiginal...
-
-			if(deviceStatus->ERR_CMD == Si46xx_ERR_ERROR)
-			{
-				printf("Si46xx.c Command error, Bad command, see reply byte 4 for details\n");
-				status = Si46xx_MESSAGE_ERROR;
-			}
-
-			if // Reset device error
-			(
-				deviceStatus->ARBERR == Si46xx_ERR_ERROR || /* An arbiter overflow has occurred. The only way to recover is for the user to reset the chip. */
-				deviceStatus->ERRNR  == Si46xx_ERR_ERROR    /* Fatal error has occurred. The only way to recover is for the user to reset the chip.*/
-			)
-			{
-				printf("Si46xx: IC Error\n");
-				status = Si46xx_DEVICE_ERROR;
-			}
-
-			else if // Resend last command error
-			(
-					deviceStatus->CMDOFERR == Si46xx_ERR_ERROR || /* The command interface has overflowed, and data has been lost */
-					deviceStatus->REPOFERR == Si46xx_ERR_ERROR    /* The reply interface has underflowed, and bad data has been returned to the user */
-			)
-			{
-				printf("Si46xx: Message Error\n");
-				status = Si46xx_MESSAGE_ERROR;
-			}
-
-			else if(deviceStatus->CTS == Si46xx_CTS_READY) // Ready for next command
-			{
-
-				status = Si46xx_OK;
-
-				/* TODO :NOT_READY 	0x0 	Chip is not ready for the user to send a command or read a reply. If the user sends a firmware-interpreted command, the contents of the transaction will be ignored and the CTS bit will remain 0. If the user reads a reply, they will receive the status byte (CTS bit with value 0 followed by 7 other status bits). All following bytes will read as zero.
-				 *  -> muss der dann nicht für die anderen auhc ne 0 rausgeben?
-				 */
-			}
-			break;
-
-		case HAL_BUSY:
-			status = Si46xx_BUSY;
-			break;
-
-		default:
-			printf("\032[1;36mSi46xx: Si46xx_SPIgetAnalyzeStatus SPI Error\032[0m\r\n");
-			status = Si46xx_SPI_ERROR;
-			break;
-	}
-
-	CDC_Transmit_FS((uint8_t *) "sst ", 4);
-	CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
-	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
-	CDC_Transmit_FS((uint8_t*) "\n", 1);
-
-	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE) // TODO: muss nach der Funktion zum Refreshen...
-	{
-		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
-		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
-	}
-
-	return status;
-}
 
 
 /* Timeout and waiting routines --------------------------------- */

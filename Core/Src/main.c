@@ -278,7 +278,8 @@ int main(void)
 	  bpDebugPrint();
 	  bpCommTasks();
 
-	  Si46xx_Tasks();
+	  Si46xx_radio_tasks();
+	  Si46xx_function_tasks();
 
 	  cdc_Interface_Tasks();
 

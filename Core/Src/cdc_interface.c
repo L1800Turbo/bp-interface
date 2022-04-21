@@ -309,15 +309,19 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			//extern void Si46xx_Boot(void);
 			//Si46xx_Boot();
 
+			// TODO: Temporäte Lösung II
 			//if(Si46xx_send_firmware(FW_SRC_UC, (uint8_t *) &Si46xx_Firmware, sizeof(Si46xx_Firmware)) == Si46xx_OK)
-			if(Si46xx_send_firmware(FW_SRC_USB, 0, 0) == Si46xx_OK)
+			/*if(Si46xx_send_firmware(FW_SRC_USB, 0, 0) == Si46xx_OK)
 			{
 				printf("send_firmware sboot_fw anstoßen ging\n");
 			}
 			else
 			{
 				printf("send_firmware sboot_fw anstoßen ging nicht\n");
-			}
+			}*/
+
+			// TODO: Temporäte Lösung III
+			Si46xxCfg.radio_states = Si46xx_Radio_Start;
 		}
 
 		// Transfer a (firmware/patch) file onto the device

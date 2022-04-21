@@ -88,7 +88,7 @@ typedef enum
 	SI46XX_MSG_GET_DIGITAL_SERVICE_DATA,
 	SI46XX_MSG_GET_EVENT_STATUS,
 	SI46XX_MSG_GET_ENSEMBLE_INFO,
-	SI46xx_MSG_SET_FREQ_LIST,
+	SI46XX_MSG_SET_FREQ_LIST,
 	SI46XX_MSG_GET_FREQ_LIST,
 	SI46XX_MSG_GET_SERVICE_INFO,
 
@@ -103,6 +103,8 @@ typedef struct
 	Si46xx_statusType (*receiveFunc)();
 
 }Si46xx_msg_dt;
+
+void Si46xx_Push(Si46xx_msg_en msgIndex);
 
 const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE];
 

@@ -63,13 +63,13 @@ void SST25_Set_Address(uint32_t address)
 // Einfache workaround-Funktion, um den direkt angeschlossenen Flash zu programmieren
 void SST25_Write_Flash_File()
 {
-	uint32_t fileSize = 0;
-	uint8_t firstRun = 1;
-
 #ifndef SI46XX_FLASH_ON_UC
 	printf("FW Flash not loaded into uC flash!\n");
 
 #else
+	uint32_t fileSize = 0;
+	uint8_t firstRun = 1;
+
 	//extern uint8_t Si46xx_Firmware; //[499356]
 	uint8_t * fwPtr = (uint8_t*) &Si46xx_Firmware;
 

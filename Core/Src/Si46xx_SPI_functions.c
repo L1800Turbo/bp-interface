@@ -46,6 +46,9 @@ Si46xx_statusType Si46xx_Msg_GetFreqList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetServiceInfo_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetServiceInfo_receiveFunc();
 
+void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data);
+Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len);
+
 extern struct Si46xx_Config Si46xxCfg;
 uint8_t spiBuffer[4096];
 
@@ -150,7 +153,7 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.receiveFunc = Si46xx_Msg_GetEnsembleInfo_receiveFunc
 		},	/* SI46XX_MSG_GET_ENSEMBLE_INFO */
 		{
-				.msgIndex	 = SI46xx_MSG_SET_FREQ_LIST,
+				.msgIndex	 = SI46XX_MSG_SET_FREQ_LIST,
 				.msgName	 = "SI46xx_MSG_SET_FREQ_LIST",
 				.sendFunc	 = Si46xx_Msg_SetFreqList_sendFunc,
 				.receiveFunc = Si46xx_Msg_SetFreqList_receiveFunc
@@ -171,6 +174,12 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 
 
 /* Basic SPI routines ---------------------------------------------------------------- */
+
+void Si46xx_Push(Si46xx_msg_en msgIndex)
+{
+	cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[msgIndex]);
+}
+
 
 /**
  * Send command via SPI
@@ -238,7 +247,94 @@ HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, 
 	return state;
 }
 
+/*
+ * Analyze last status message
+ */
+Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
+{
+	Si46xx_statusType status = Si46xx_BUSY;
+	Si46xx_Status_Values_dt * deviceStatus = &Si46xxCfg.deviceStatus;
 
+	switch(Si46xx_SPIgetStatus(Si46xxCfg.hspi, data, len))
+	{
+		case HAL_OK:
+			progress_StatusBytes(deviceStatus, &data[1]); // TODO Passt das noch?
+			//progress_StatusBytes(deviceStatus, &spiBuffer[1]); ortiginal...
+
+			if(deviceStatus->ERR_CMD == Si46xx_ERR_ERROR)
+			{
+				printf("Si46xx.c Command error, Bad command, see reply byte 4 for details\n");
+				status = Si46xx_MESSAGE_ERROR;
+			}
+
+			if // Reset device error
+			(
+				deviceStatus->ARBERR == Si46xx_ERR_ERROR || /* An arbiter overflow has occurred. The only way to recover is for the user to reset the chip. */
+				deviceStatus->ERRNR  == Si46xx_ERR_ERROR    /* Fatal error has occurred. The only way to recover is for the user to reset the chip.*/
+			)
+			{
+				printf("Si46xx: IC Error\n");
+				status = Si46xx_DEVICE_ERROR;
+			}
+
+			else if // Resend last command error
+			(
+					deviceStatus->CMDOFERR == Si46xx_ERR_ERROR || /* The command interface has overflowed, and data has been lost */
+					deviceStatus->REPOFERR == Si46xx_ERR_ERROR    /* The reply interface has underflowed, and bad data has been returned to the user */
+			)
+			{
+				printf("Si46xx: Message Error\n");
+				status = Si46xx_MESSAGE_ERROR;
+			}
+
+			else if(deviceStatus->CTS == Si46xx_CTS_READY) // Ready for next command
+			{
+
+				status = Si46xx_OK;
+
+				/* TODO :NOT_READY 	0x0 	Chip is not ready for the user to send a command or read a reply. If the user sends a firmware-interpreted command, the contents of the transaction will be ignored and the CTS bit will remain 0. If the user reads a reply, they will receive the status byte (CTS bit with value 0 followed by 7 other status bits). All following bytes will read as zero.
+				 *  -> muss der dann nicht für die anderen auhc ne 0 rausgeben?
+				 */
+			}
+			break;
+
+		case HAL_BUSY:
+			status = Si46xx_BUSY;
+			break;
+
+		default:
+			printf("\032[1;36mSi46xx: Si46xx_SPIgetAnalyzeStatus SPI Error\032[0m\r\n");
+			status = Si46xx_SPI_ERROR;
+			break;
+	}
+
+	CDC_Transmit_FS((uint8_t *) "sst ", 4);
+	CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
+	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
+	CDC_Transmit_FS((uint8_t*) "\n", 1);
+
+	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE) // TODO: muss nach der Funktion zum Refreshen...
+	{
+		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
+		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
+	}
+
+	return status;
+}
+
+void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data)
+{
+	/* Progress into status variables */
+	status->CTS      = (data[0] & 0x80)>>7;
+	status->ERR_CMD  = (data[0] & 0x40)>>6;
+	status->STCINT   = (data[0] & 0x01);
+	status->PUP      = (data[3] & 0xC0)>>6;
+	status->RFFE_ERR = (data[3] & 0x20)>>5;
+	status->REPOFERR = (data[3] & 0x08)>>3;
+	status->CMDOFERR = (data[3] & 0x04)>>2;
+	status->ARBERR   = (data[3] & 0x02)>>1;
+	status->ERRNR    = (data[3] & 0x01);
+}
 
 
 

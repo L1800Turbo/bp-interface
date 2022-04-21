@@ -27,6 +27,10 @@ void Si46xx_firmware_init(void)
 	firmware->current_flash_address  = 0; // TODO: Erstmal einfach festgelegt
 }
 
+uint8_t Si46xx_firmware_isBusy(void)
+{
+	return fw_state != Si46xx_FIRMWARE_STATE_IDLE;
+}
 
 // TODO: vorbereiten, dass firmware gesendet wird, hier auch, dass auf den Flash geschrieben wird??
 // TODO: hier vielleicht einfach eine USB und eine Flash Version von machen?

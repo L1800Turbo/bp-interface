@@ -34,7 +34,8 @@ void set_Si46xx_ISR(void);
 void Si46xx_Reset(void);
 uint8_t Si46xx_isBusy(void);
 
-void Si46xx_Tasks(void);
+void Si46xx_radio_tasks(void);
+void Si46xx_function_tasks(void);
 
 HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
 
@@ -42,8 +43,6 @@ HAL_StatusTypeDef Si46xx_SPIgetStatus(SPI_HandleTypeDef * hspi, uint8_t * data, 
 //Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len); // TODO: durch das gegenseitig includen macht das ärger
 
 HAL_StatusTypeDef Si46xx_SPIsend(SPI_HandleTypeDef * hspi, uint8_t * data, uint16_t len);
-
-void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data);
 
 void Si46xx_SetWaitTime(uint32_t ms);
 uint32_t Si46xx_CurrentWaitTime(void);

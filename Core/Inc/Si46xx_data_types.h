@@ -241,8 +241,26 @@ struct Si46xx_Config
 	/* Analyzed status after a received message */
 	Si46xx_statusType analyzedStatus;
 
-	/* State of Zustandsautomat */
-	Si46xx_state_en state;
+	/* State of generic radio state machine */
+	enum radio_states_en
+	{
+		Si46xx_Radio_Idle = 0,
+		Si46xx_Radio_Start,
+		Si46xx_Radio_Start_Wait,
+		Si46xx_Radio_Patch,
+		Si46xx_Radio_Patch_Wait,
+		Si46xx_Radio_FlashFirmware,
+		Si46xx_Radio_FlashFirmware_Wait,
+		Si46xx_Radio_Boot,
+		Si46xx_Radio_Boot_Wait,
+		Si46xx_Radio_Config,
+		Si46xx_Radio_Config_Wait,
+		// Konfiguration wie Senderlisten hier...
+
+	}radio_states;
+
+	/* State of SPI function state machine */
+	Si46xx_state_en function_state;
 
 	/* Waiting routines */
 	uint32_t waitStamp;
