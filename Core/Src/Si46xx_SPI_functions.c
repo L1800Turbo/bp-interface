@@ -22,9 +22,12 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseSector_sendFunc();
 HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseChip_sendFunc();
 HAL_StatusTypeDef Si46xx_Msg_LoadInit_sendFunc();
 HAL_StatusTypeDef Si46xx_Msg_Boot_sendFunc();
-
+HAL_StatusTypeDef Si46xx_Msg_GetPartInfo_sendFunc();
+Si46xx_statusType Si46xx_Msg_GetPartInfo_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetSysState_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetSysState_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_GetFuncInfo_sendFunc();
+Si46xx_statusType Si46xx_Msg_GetFuncInfo_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc();
@@ -35,6 +38,8 @@ HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc();
 Si46xx_statusType Si46xx_Msg_StopDigitalService_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc();
+HAL_StatusTypeDef Si46xx_Msg_DigradStatus_sendFunc();
+Si46xx_statusType Si46xx_Msg_DigradStatus_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetEventStatus_sendFunc();
 Si46xx_statusType Si46xx_Msg_GetEventStatus_receiveFunc();
 HAL_StatusTypeDef Si46xx_Msg_GetEnsembleInfo_sendFunc();
@@ -105,11 +110,23 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.receiveFunc = Si46xx_Msg_ReadReply_receiveFunc
 		},	/* SI46XX_MSG_BOOT */
 		{
+				.msgIndex    = SI46XX_MSG_GET_PART_INFO,
+				.msgName	 = "SI46XX_MSG_GET_PART_INFO",
+				.sendFunc    = Si46xx_Msg_GetPartInfo_sendFunc,
+				.receiveFunc = Si46xx_Msg_GetPartInfo_receiveFunc
+		},	/* SI46XX_MSG_GET_PART_INFO */
+		{
 				.msgIndex    = SI46XX_MSG_REFRESH_SYS_STATE,
 				.msgName	 = "SI46XX_MSG_REFRESH_SYS_STATE",
 				.sendFunc    = Si46xx_Msg_GetSysState_sendFunc,
 				.receiveFunc = Si46xx_Msg_GetSysState_receiveFunc
 		},	/* SI46XX_MSG_REFRESH_SYS_STATE */
+		{
+				.msgIndex    = SI46XX_MSG_GET_FUNC_INFO,
+				.msgName	 = "SI46XX_MSG_GET_FUNC_INFO",
+				.sendFunc    = Si46xx_Msg_GetFuncInfo_sendFunc,
+				.receiveFunc = Si46xx_Msg_GetFuncInfo_receiveFunc
+		},	/* SI46XX_MSG_GET_FUNC_INFO */
 		{
 				.msgIndex    = SI46XX_MSG_GET_DIGITAL_SERVICE_LIST,
 				.msgName	 = "SI46XX_MSG_GET_DIGITAL_SERVICE_LIST",
@@ -140,6 +157,12 @@ const Si46xx_msg_dt Si46xx_messages[SI46XX_MSG_SIZE] = {
 				.sendFunc    = Si46xx_Msg_GetDigitalServiceData_sendFunc,
 				.receiveFunc = Si46xx_Msg_GetDigitalServiceData_receiveFunc
 		},  /* SI46XX_MSG_GET_DIGITAL_SERVICE_DATA */
+		{
+				.msgIndex	 = SI46XX_MSG_DIGRAD_STATUS,
+				.msgName	 = "SI46XX_MSG_DIGRAD_STATUS",
+				.sendFunc	 = Si46xx_Msg_DigradStatus_sendFunc,
+				.receiveFunc = Si46xx_Msg_DigradStatus_receiveFunc
+		},	/* SI46XX_MSG_DIGRAD_STATUS */
 		{
 				.msgIndex	 = SI46XX_MSG_GET_EVENT_STATUS,
 				.msgName	 = "SI46XX_MSG_GET_EVENT_STATUS",
@@ -313,7 +336,7 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
 	CDC_Transmit_FS((uint8_t*) "\n", 1);
 
-	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE) // TODO: muss nach der Funktion zum Refreshen...
+	if(Si46xxCfg.deviceStatus.STC == Si46xx_STCINT_COMPLETE) // TODO: muss nach der Funktion zum Refreshen...
 	{
 		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
 		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
@@ -322,12 +345,31 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 	return status;
 }
 
+// TODO: auf Dauer mit dem Status anders machen
 void progress_StatusBytes(Si46xx_Status_Values_dt * status, uint8_t * data)
 {
 	/* Progress into status variables */
-	status->CTS      = (data[0] & 0x80)>>7;
-	status->ERR_CMD  = (data[0] & 0x40)>>6;
-	status->STCINT   = (data[0] & 0x01);
+	status->CTS      = (data[0] >> 7) & 0x01;
+	status->ERR_CMD  = (data[0] >> 6) & 0x01;
+
+	Si46xxCfg.events.digital_radio_link_change = (data[0] >> 5) & 0x01; // DACQINT
+	//status->DSRVINT  = (data[0] >> 4) & 0x01;
+
+	// DSRVINT: Indicates that an enabled data component of one of the digital services requires attention.
+	//          Service by sending the GET_DIGITAL_SERVICE_DATA command.
+	if((data[0] >> 4) & 0x01)
+	{
+	//	Si46xx_Push(SI46XX_MSG_GET_DIGITAL_SERVICE_DATA); TODO: noch nicht aktivieren, noch nicht implementiert
+	}
+	//status->STCINT   = (data[0] & 0x01);
+	// STCINT: Seek/Tune complete interrupt: Set STC flag and ACK
+	if(data[0] & 0x01)
+	{
+		status->STC = Si46xx_STCINT_COMPLETE;
+
+		Si46xx_Push(SI46XX_MSG_DIGRAD_STATUS); // TODO: Eher in eine Main-Loop mit Event-Bit, oder? so wie oben
+	}
+
 	status->PUP      = (data[3] & 0xC0)>>6;
 	status->RFFE_ERR = (data[3] & 0x20)>>5;
 	status->REPOFERR = (data[3] & 0x08)>>3;
@@ -367,7 +409,7 @@ HAL_StatusTypeDef Si46xx_Msg_HostLoad_sendFunc()
 
 	uint32_t size = (firmware->fwBufSize > 4092 ? 4092 : firmware->fwBufSize);
 
-	spiBuffer[0] = SI46XX_HOST_LOAD;
+	spiBuffer[0] = SI46XX_SPI_CMD_HOST_LOAD;
 	spiBuffer[1] = 0x00;
 	spiBuffer[2] = 0x00;
 	spiBuffer[3] = 0x00;
@@ -412,7 +454,7 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_LoadImage_sendFunc()
 	uint8_t data[12];
 	HAL_StatusTypeDef state = HAL_OK;
 
-	data[0] = SI46XX_FLASH_LOAD;
+	data[0] = SI46XX_SPI_CMD_FLASH_LOAD;
 	data[1] = SI46XX_FLASH_LOAD_IMG;
 	data[2] = 0x00;
 	data[3] = 0x00;
@@ -448,7 +490,7 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_WriteBlock_sendFunc()
 
 	uint32_t size = (firmware->fwBufSize > 256 ? 256 : firmware->fwBufSize);
 
-	spiBuffer[0] = SI46XX_FLASH_LOAD;
+	spiBuffer[0] = SI46XX_SPI_CMD_FLASH_LOAD;
 	spiBuffer[1] = SI46XX_FLASH_WRITE_BLOCK;
 	spiBuffer[2] = 0x0C;
 	spiBuffer[3] = 0xED;
@@ -508,7 +550,7 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseSector_sendFunc() // TODO: Adresse n
 	uint8_t data[8];
 	HAL_StatusTypeDef state = HAL_OK;
 
-	data[0] = SI46XX_FLASH_LOAD;
+	data[0] = SI46XX_SPI_CMD_FLASH_LOAD;
 	data[1] = SI46XX_FLASH_ERASE_SECTOR;
 	data[2] = 0xC0;
 	data[3] = 0xDE;
@@ -531,7 +573,7 @@ HAL_StatusTypeDef Si46xx_Msg_FlashLoad_EraseChip_sendFunc()
 	uint8_t data[4];
 	HAL_StatusTypeDef state = HAL_OK;
 
-	data[0] = SI46XX_FLASH_LOAD;
+	data[0] = SI46XX_SPI_CMD_FLASH_LOAD;
 	data[1] = SI46XX_FLASH_ERASE_CHIP;
 	data[2] = 0xDE;
 	data[3] = 0xC0;
@@ -546,7 +588,7 @@ HAL_StatusTypeDef Si46xx_Msg_LoadInit_sendFunc()
 	uint8_t data[2];
 	HAL_StatusTypeDef state = HAL_OK;
 
-	data[0] = SI46XX_LOAD_INIT;
+	data[0] = SI46XX_SPI_CMD_LOAD_INIT;
 	data[1] = 0x00;
 
 	state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -560,7 +602,7 @@ HAL_StatusTypeDef Si46xx_Msg_Boot_sendFunc()
 
 	//Si46xxCfg.timeoutValue = 300; TODO
 
-	spiBuffer[0] = SI46XX_BOOT;
+	spiBuffer[0] = SI46XX_SPI_CMD_BOOT;
 	spiBuffer[1] = 0x00;
 
 	state = Si46xx_SPIsend(Si46xxCfg.hspi, spiBuffer, 2);
@@ -575,7 +617,7 @@ HAL_StatusTypeDef Si46xx_Msg_PowerUp_sendFunc()
 	uint8_t data[16];
 
 	// Prepare data into SPI buffer
-	data[0]  = SI46XX_POWER_UP;
+	data[0]  = SI46XX_SPI_CMD_POWER_UP;
 	data[1]  = (Si46xxCfg.initConfig.CTS_InterruptEnable << 7);
 	data[2]  = (Si46xxCfg.initConfig.CLK_MODE << 4) | Si46xxCfg.initConfig.XOSC_TR_SIZE;
 	data[3]  = (Si46xxCfg.initConfig.IBIAS & 0x7F);
@@ -600,7 +642,45 @@ HAL_StatusTypeDef Si46xx_Msg_PowerUp_sendFunc()
 	return state;
 }
 
+// SI46XX_MSG_GET_PART_INFO
+HAL_StatusTypeDef Si46xx_Msg_GetPartInfo_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
 
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0] = SI46XX_SPI_CMD_GET_PART_INFO;
+		data[1] = 0x00;
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_GetPartInfo_receiveFunc()
+{
+	uint8_t data[10+1];
+
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, sizeof(data));
+
+	if(state != Si46xx_OK)
+	{
+		return state;
+	}
+
+	Si46xxCfg.deviceInformation.chipRevision = data[5];
+	Si46xxCfg.deviceInformation.romID		 = data[6];
+	Si46xxCfg.deviceInformation.partNumber   = data[9] | (data[10]<<8);
+
+
+	//printf("Si46xx: Image %d\n", Si46xxCfg.image);
+	printf("sHwRev_%d_%d_%d\n", Si46xxCfg.deviceInformation.chipRevision,
+			Si46xxCfg.deviceInformation.romID, Si46xxCfg.deviceInformation.partNumber);
+
+	return state;
+}
 
 // SI46XX_MSG_REFRESH_SYS_STATE
 HAL_StatusTypeDef Si46xx_Msg_GetSysState_sendFunc()
@@ -610,7 +690,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetSysState_sendFunc()
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
-		data[0] = SI46XX_GET_SYS_STATE;
+		data[0] = SI46XX_SPI_CMD_GET_SYS_STATE;
 		data[1] = 0x00;
 
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -641,6 +721,46 @@ Si46xx_statusType Si46xx_Msg_GetSysState_receiveFunc()
 	return state;
 }
 
+/* SI46XX_MSG_GET_FUNC_INFO */
+HAL_StatusTypeDef Si46xx_Msg_GetFuncInfo_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+		data[0] = SI46XX_SPI_CMD_GET_FUNC_INFO;
+		data[1] = 0x00;
+
+		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_GetFuncInfo_receiveFunc()
+{
+	uint8_t data[12+1];
+
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, sizeof(data));
+
+	if(state != Si46xx_OK)
+	{
+		return state;
+	}
+
+	Si46xxCfg.deviceInformation.softwareRevision[0] = data[5];
+	Si46xxCfg.deviceInformation.softwareRevision[1] = data[6];
+	Si46xxCfg.deviceInformation.softwareRevision[2] = data[7];
+
+
+	//printf("Si46xx: Image %d\n", Si46xxCfg.image);
+	printf("sSwRev_%d_%d_%d\n", Si46xxCfg.deviceInformation.softwareRevision[0],
+			Si46xxCfg.deviceInformation.softwareRevision[1], Si46xxCfg.deviceInformation.softwareRevision[2]);
+
+	return state;
+}
+
 /* SI46XX_MSG_GET_DIGITAL_SERVICE_LIST */
 HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc()
 {
@@ -650,14 +770,15 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc()
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
 		// If tune is not marked as complete, check once if it is now
-		if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_INCOMPLETE)
+		if(Si46xxCfg.deviceStatus.STC == Si46xx_STCINT_INCOMPLETE)
 		{
+			printf("Si46xx_Msg_GetDigitalServiceList_sendFunc: Si46xx_STCINT_INCOMPLETE, not fetching service list\n");
 			/*state = */Si46xx_SPIgetAnalyzeStatus(data, 5); // State nicht aktualisieren, soll busy bleiben
 		}
 
-		if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE)
+		if(Si46xxCfg.deviceStatus.STC == Si46xx_STCINT_COMPLETE)
 		{
-			data[0] = SI46XX_GET_DIGITAL_SERVICE_LIST;
+			data[0] = SI46XX_SPI_CMD_GET_DIGITAL_SERVICE_LIST;
 			data[1] = 0x00;
 
 			state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -843,12 +964,12 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 		return HAL_ERROR;
 	}
 
-	Si46xxCfg.deviceStatus.STCINT = Si46xx_STCINT_COMPLETE; // für den ersten... TODO ist das noch nötig?
+	//Si46xxCfg.deviceStatus.STCINT = Si46xx_STCINT_COMPLETE; // für den ersten... TODO ist das noch nötig?
 
 	// No other tuning should be running
-	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY  && Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_COMPLETE)
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY  && Si46xxCfg.deviceStatus.STC == Si46xx_STCINT_COMPLETE)
 	{
-		data[0] = SI46XX_DAB_TUNE_FREQ;
+		data[0] = SI46XX_SPI_CMD_DAB_TUNE_FREQ;
 		data[1] = 0x00;
 		data[2] = Si46xxCfg.freqIndex;
 		data[3] = 0x00;
@@ -866,6 +987,8 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 		data[5] = 0;
 
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 6);
+
+		Si46xxCfg.deviceStatus.STC = Si46xx_STCINT_INCOMPLETE; // Reset STCINT
 
 		// As maximum wait time:
 		//Si46xx_SetWaitTime(100); // TODO Timeout und so...
@@ -887,16 +1010,6 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 	// Reset the indexes, as they are different on this ensemble
 	Si46xxCfg.wantedService.serviceID = 0;
 	Si46xxCfg.wantedService.componentID = 0;
-
-	if(Si46xxCfg.deviceStatus.STCINT == Si46xx_STCINT_INCOMPLETE) // TODO: Hier zu fragen ist nutzlos, kurz nach aufrufen ist tuning ja nicht durch
-	{
-		printf("Si46xx: Tune not complete... \n");
-	}
-	else
-	{
-		printf("Si46xx: Tune complete! \n");
-	}
-
 
 	return state;
 }
@@ -924,7 +1037,7 @@ HAL_StatusTypeDef Si46xx_Msg_StartDigitalService_sendFunc()
 		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
 		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
 
-		data[0x0] = SI46XX_START_DIGITAL_SERVICE;
+		data[0x0] = SI46XX_SPI_CMD_START_DIGITAL_SERVICE;
 		data[0x1] = 0x00;
 		data[0x2] = 0x00;
 		data[0x3] = 0x00;
@@ -970,7 +1083,7 @@ HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc()
 		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
 		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
 
-		data[0x0] = SI46XX_STOP_DIGITAL_SERVICE;
+		data[0x0] = SI46XX_SPI_CMD_STOP_DIGITAL_SERVICE;
 		data[0x1] = 0x00;
 		data[0x2] = 0x00;
 		data[0x3] = 0x00;
@@ -1024,7 +1137,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc()
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
-		data[0] = SI46XX_GET_DIGITAL_SERVICE_DATA;
+		data[0] = SI46XX_SPI_CMD_GET_DIGITAL_SERVICE_DATA;
 		data[1] = (GetDigitalServiceData_StatusOnly << 4) | GetDigitalServiceData_ACK;
 
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -1042,7 +1155,61 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc()
 	return Si46xx_OK;
 }
 
+// SI46XX_MSG_DIGRAD_STATUS
+HAL_StatusTypeDef Si46xx_Msg_DigradStatus_sendFunc()
+{
+	uint8_t data[2];
+	HAL_StatusTypeDef state = HAL_BUSY;
 
+	enum ACK
+	{
+		DONT_ACK = 0,
+		ACK	     = 1
+	};
+
+	enum ACK DIGRAD_ACK; // Clears all pending digital radio interrupts.
+	enum ACK STCACK;     // Clears the STC interrupt status indicator if set.
+
+	// TODO: gibt noch mehr zu ACKen !
+
+	DIGRAD_ACK = ACK;
+	STCACK     = ACK;
+
+	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
+	{
+			data[0] = SI46XX_SPI_CMD_DAB_DIGRAD_STATUS;
+			data[1] = 0x00 | (DIGRAD_ACK << 3) |(STCACK);
+
+			state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
+	}
+
+	return state;
+}
+
+Si46xx_statusType Si46xx_Msg_DigradStatus_receiveFunc()
+{
+	uint8_t data[0x27+1];
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, sizeof(data));
+
+	uint32_t tuned_frequency;
+
+	Si46xxCfg.deviceStatus.VALID  = (data[6]>>0) & 0x01;
+	Si46xxCfg.deviceStatus.ACQ    = (data[6]>>2) & 0x01;
+	Si46xxCfg.deviceStatus.FICERR = (data[6]>>3) & 0x01;
+
+	Si46xxCfg.deviceStatus.RSSI        = data[7];
+	Si46xxCfg.deviceStatus.SNR         = data[8];
+	Si46xxCfg.deviceStatus.FIC_QUALITY = data[9];
+	// CNR data[10]
+	// FIB_ERROR_COUNT data[11 und 12]
+
+	tuned_frequency = data[13] | (data[14]<<8) | (data[15]<<16) | (data[16]<<24);
+
+	printf("sDigrad_%u%u%u%u_%lu\n", data[6], data[7], data[8], data[9],
+			tuned_frequency);
+
+	return state;
+}
 
 // SI46XX_MSG_GET_EVENT_STATUS
 HAL_StatusTypeDef Si46xx_Msg_GetEventStatus_sendFunc()
@@ -1052,7 +1219,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetEventStatus_sendFunc()
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
-			data[0] = SI46XX_DAB_GET_EVENT_STATUS;
+			data[0] = SI46XX_SPI_CMD_DAB_GET_EVENT_STATUS;
 			data[1] = 0x00 | 1; // TODO: hier ACK einbauen
 
 			state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -1081,7 +1248,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetEnsembleInfo_sendFunc()
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
-			data[0] = SI46XX_GET_ENSEMBLE_INFO;
+			data[0] = SI46XX_SPI_CMD_GET_ENSEMBLE_INFO;
 			data[1] = 0x00;
 
 			state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -1114,7 +1281,7 @@ HAL_StatusTypeDef Si46xx_Msg_SetFreqList_sendFunc() // TODO: Muss getestet werde
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
-		data[0] = SI46XX_SET_FREQ_LIST;
+		data[0] = SI46XX_SPI_CMD_SET_FREQ_LIST;
 		data[1] = (DAB_Chan_SIZE & 0xFF);
 		data[2] = 0; // Normal guaranteed tuning range 168 MHz to 240 MHz
 		data[3] = 0;
@@ -1159,7 +1326,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetFreqList_sendFunc()
 
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
-		data[0] = SI46XX_GET_FREQ_LIST;
+		data[0] = SI46XX_SPI_CMD_GET_FREQ_LIST;
 		data[1] = 0x00;
 
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 2);
@@ -1231,7 +1398,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetServiceInfo_sendFunc()
 		// Get current service from wanted indexes
 		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
 
-		data[0] = SI46XX_GET_SERVICE_INFO;
+		data[0] = SI46XX_SPI_CMD_GET_SERVICE_INFO;
 		data[1] = 0x00;
 		data[2] = 0x00;
 		data[3] = 0x00;

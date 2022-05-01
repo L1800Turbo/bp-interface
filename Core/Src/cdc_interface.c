@@ -234,7 +234,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 				printf("Si46xx: Tuning to channel index %d: %s\n", channelIndex, DAB_frequency_list[channelIndex].name);
 
 				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_DAB_TUNE_FREQ]);
-				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_GET_DIGITAL_SERVICE_LIST]);
+				//cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_GET_DIGITAL_SERVICE_LIST]); TODO: Macht hier keinen Sinn, ist ja noch unvollst.
 			}
 
 			// TODO: Frequenz einstellen -> Tunen auf Frequenz -> Infos holen

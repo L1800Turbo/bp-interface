@@ -35,6 +35,11 @@ enum Si46xx_ERR_REPLY {
 	// TODO: Byte 4 auslesen bei Error...
 };
 
+enum Si46xx_INT {
+	Si46xx_NORMAL = 0,
+	Si46xx_INTERRUPT
+};
+
 enum Si46xx_ISR_state_en {
 	ISR_SET = 0,
 	ISR_UNSET,
@@ -91,7 +96,7 @@ typedef struct
 	 * Therefore, any changes made to the state of CTS by the processor will not affect a serial port transaction that is currently in progress.
 	 */
 	enum Si46xx_CTS CTS;
-	enum Si46xx_STCINT STCINT;		/* Seek/Tune Complete */
+	enum Si46xx_STCINT STC;		/* Seek/Tune Complete Interrupt */
 
 	enum Si46xx_ERR_REPLY ERR_CMD;
 	enum Si46xx_PUP_STATE PUP; /* Indicates the powerup state of the system. */
@@ -103,6 +108,32 @@ typedef struct
 									   This is generally caused by running at a SPI clock rate that is too fast for the data arbiter and memory speed. */
 	enum Si46xx_ERR_REPLY ARBERR;	/* When set an arbiter error has occurred. */
 	enum Si46xx_ERR_REPLY ERRNR; /* When set a non-recoverable error has occurred. The system keep alive timer has expired. */
+
+	/* DIGRAD status values */
+	enum Si46xx_VALID_en
+	{
+		NOT_VALID = 0,
+		IS_VALID  = 1
+	}VALID; /* When set to 1, the RSSI is at or above the valid threshold. It is recommended that the valid bit be used as part of tune validation.
+				Once STC is set the valid bit can be checked to verify that then tune has passed both the RSSI valid threshold and that acquisition
+				has been achived. The host should set the RSSI thershold, validation time and acquisition time to achieve solid tune time performance.
+				Doing this helps insure an accurate tune indication and helps to decrease scan times due to quick station disqualification. */
+
+	enum Si46xx_ACQ_en
+	{
+		NO_ACQ = 0,
+		IS_ACQ = 1
+	}ACQ; /* When set to 1 the ensemble is acquired. */
+
+	enum Si46xx_FICERR_en
+	{
+		NO_FICERR    = 0,
+		FICERR_ERROR = 1  // Unrecoverable errors
+	}FICERR; /* When set to 1 the ensemble is experiencing FIC errors. Signal quality has been degraded and acquisition may be lost. */
+
+	int8_t RSSI; // Received signal strength indicator in dBuV.
+	int8_t SNR;  // Indicates the current estimate of the digital SNR in dB.
+	uint8_t FIC_QUALITY; // Indicates the current estimate of the ensemble's FIC quality. The number provided is between 0 and 100.
 }Si46xx_Status_Values_dt;
 
 struct Si46xx_Init_Values {
@@ -235,6 +266,16 @@ struct Si46xx_Config
 	/* Initial configuration */
 	struct Si46xx_Init_Values initConfig;
 
+	/* Version information about the SI46XX device */
+	struct device_information_dt
+	{
+		uint8_t chipRevision;
+		uint8_t romID;
+		uint16_t partNumber;
+
+		uint8_t softwareRevision[3]; // Version with subrevision
+	}deviceInformation;
+
 	/* Device status, updated with each SPI status command */
 	Si46xx_Status_Values_dt deviceStatus;
 
@@ -287,6 +328,15 @@ struct Si46xx_Config
 	{
 		// TODO: hier noch alle Events eintragen und drauf eingehen
 
+		// Von RD_REPLY
+		/*
+		 * DACQINT:
+		 * Digital radio link change interrupt indicator. Indicates that something in the digital radio ensemble acquisition status has changed.
+		 * Service by sending the DAB_DIGRAD_STATUS command.
+		 */
+		enum Si46xx_INT digital_radio_link_change;
+
+		// Von SI46XX_MSG_GET_EVENT_STATUS
 		uint8_t freq_info_int:1; 	/* New Frequency Information interrupt. Indicates that new Frequency Information is available. The Frequency Information list is retrieved with the DAB_GET_FREQ_INFO command. The rate at which frequency information interrupts can occur is defined by the DAB_EVENT_MIN_FREQINFO_PERIOD property. */
 		uint8_t service_list_int:1; /* New service list interrupt. Indicates that a new digital service list is available. The new service list is retrieved with the GET_DIGITAL_SERVICE_LIST command. */
 	}events;

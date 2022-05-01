@@ -153,6 +153,10 @@ void Si46xx_radio_tasks(void)
 				if(Si46xxCfg.analyzedStatus == Si46xx_OK && Si46xxCfg.image == Si46xx_DAB)
 				{
 					printf("Si46xx_Radio_Boot_Wait: Si46xx_OK, DAB loaded");
+
+					// Activate interrupt reactions to answers
+					Si46xxCfg.isrState = ISR_UNSET;
+
 					Si46xxCfg.radio_states++;
 				}
 				else
@@ -170,6 +174,12 @@ void Si46xx_radio_tasks(void)
 			// Set frequency list from DAB_frequency_dt DAB_frequency_list[DAB_Chan_SIZE];
 			Si46xx_Push(SI46XX_MSG_SET_FREQ_LIST);
 			Si46xx_Push(SI46XX_MSG_GET_FREQ_LIST); // For debugging -> will update client interface
+
+			// Get information about HW and SW version
+			Si46xx_Push(SI46XX_MSG_GET_PART_INFO);
+			Si46xx_Push(SI46XX_MSG_GET_FUNC_INFO);
+
+			Si46xxCfg.radio_states++;
 			break;
 
 		case Si46xx_Radio_Config_Wait:
@@ -178,6 +188,9 @@ void Si46xx_radio_tasks(void)
 				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
 				{
 					printf("Si46xx_Radio_Config_Wait: Si46xx_OK");
+
+					Si46xxCfg.deviceStatus.STC = Si46xx_STCINT_COMPLETE; // As first one
+
 					Si46xxCfg.radio_states = Si46xx_Radio_Idle;
 				}
 			}
@@ -185,6 +198,21 @@ void Si46xx_radio_tasks(void)
 
 		case Si46xx_Radio_Idle:
 
+			// Fetch events:
+			if(Si46xxCfg.events.service_list_int)
+			{
+				printf("Event: service_list_int\n");
+				Si46xxCfg.events.service_list_int = 0;
+				Si46xx_Push(SI46XX_MSG_GET_DIGITAL_SERVICE_LIST);
+			}
+			if(Si46xxCfg.events.digital_radio_link_change == Si46xx_INTERRUPT)
+			{
+				printf("Event: digital_radio_link_change\n");
+				Si46xxCfg.events.digital_radio_link_change = Si46xx_NORMAL;
+				Si46xx_Push(SI46XX_MSG_DIGRAD_STATUS);
+			}
+
+			// TODO: So fortsetzen?
 			break;
 	}
 
@@ -208,7 +236,7 @@ void Si46xx_function_tasks(void)
 	// Run sub-state machine for firmware jobs
 	Si46xx_firmware_tasks();
 
-	if(Si46xx_RemainingTimeLeft() == TIME_LEFT)
+	if(Si46xx_RemainingTimeLeft() == TIME_LEFT) // TODO: Das ist doppelt mit unten
 	{
 		return;
 	}
@@ -220,7 +248,7 @@ void Si46xx_function_tasks(void)
 			// React to interrupt flags
 			// If service list update is available
 
-			// TODO: Wenn er aus ist, sollte er hier nicht hin....
+			// TODO: Wenn er aus ist, sollte er hier nicht hin.... Reset-Status abfragen
 			if(Si46xxCfg.events.service_list_int == 1)
 			{
 				Si46xxCfg.events.service_list_int = 0;
