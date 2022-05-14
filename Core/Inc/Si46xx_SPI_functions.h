@@ -52,6 +52,8 @@ enum Si46xx_SPI_commands { // TODO: Noch alle passend umbenennen
 	SI46XX_SPI_CMD_SET_FREQ_LIST			= 0xB8, /* Sets the DAB frequency table. The frequencies are in units of kHz. 					*/
 	SI46XX_SPI_CMD_GET_FREQ_LIST 			= 0xB9,	/* Gets the DAB frequency table  														*/
 
+	SI46XX_SPI_CMD_DAB_GET_COMPONENT_INFO   = 0xBB, /* Gets information about components within the ensemble if available.                  */
+
 	SI46XX_SPI_CMD_GET_SERVICE_INFO			= 0xC0	/* Gets information about a service.													*/
 };
 
@@ -83,6 +85,7 @@ typedef enum
 	SI46XX_MSG_GET_PART_INFO,
 	SI46XX_MSG_REFRESH_SYS_STATE,
 	SI46XX_MSG_GET_FUNC_INFO,
+	SI46XX_MSG_SET_PROPERTY,
 	SI46XX_MSG_GET_DIGITAL_SERVICE_LIST,
 	SI46XX_MSG_DAB_TUNE_FREQ,
 	SI46XX_MSG_START_DIGITAL_SERVICE,
@@ -93,6 +96,7 @@ typedef enum
 	SI46XX_MSG_GET_ENSEMBLE_INFO,
 	SI46XX_MSG_SET_FREQ_LIST,
 	SI46XX_MSG_GET_FREQ_LIST,
+	SI46XX_MSG_DAB_GET_COMPONENT_INFO,
 	SI46XX_MSG_GET_SERVICE_INFO,
 
 	SI46XX_MSG_SIZE

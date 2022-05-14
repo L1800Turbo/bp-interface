@@ -191,6 +191,8 @@ void SysTick_Handler(void)
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
 
+  //cdc_Ringbuf_Tasks(); aktuell nicht hier...
+
   /* USER CODE END SysTick_IRQn 1 */
 }
 

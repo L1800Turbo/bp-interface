@@ -56,7 +56,7 @@
 /* It's up to user to redefine and/or remove those define */
  // Angepasst für SPI-Übertragung mit 4kB-Blöcken
 #define APP_RX_DATA_SIZE  8192
-#define APP_TX_DATA_SIZE  2048
+#define APP_TX_DATA_SIZE  4096
 
 
 /* USER CODE END EXPORTED_DEFINES */
@@ -118,6 +118,7 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len);
 
 void cdc_Ringbuf_Tasks(void);
 size_t cdc_ringbuf_Rx_getLength(void);
+size_t cdc_ringbuf_Tx_getLength(void);
 uint8_t cdc_ringbufRx_get(uint8_t * buf, size_t * Len);
 void cdc_ringbufRx_clear(void);
 

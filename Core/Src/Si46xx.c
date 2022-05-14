@@ -37,6 +37,13 @@ void set_Si46xx_ISR(void)
 	else
 	{
 		Si46xxCfg.isrState = ISR_SET;
+
+		// If there's nothing to do, check the reason of the int:
+		if(!Si46xx_isBusy() && Si46xxCfg.radio_states == Si46xx_Radio_Idle)
+		{
+			Si46xxCfg.isrState = ISR_UNSET; // TODO: ist das an dieser Stelle sonderlich schlau? Vll ein eigenes Event machen?
+			Si46xx_Push(SI46XX_MSG_REFRESH_SYS_STATE);
+		}
 	}
 
 	// TODO: hier auf Interrupts reagieren, wenn nicht in Busy-State, dann ein DAB_GET_EVENT_STATUS
@@ -45,7 +52,16 @@ void set_Si46xx_ISR(void)
 }
 
 
-
+// TODO: Properties wo anders noch einbauen?
+#define BASE_PROPERTY_NO 4
+struct property baseProperties[BASE_PROPERTY_NO] =
+{
+		{.index = DIGITAL_SERVICE_INT_SOURCE, .data = 0x0001},
+		{.index = INT_CTL_ENABLE,             .data = (INT_CTL_DEVNTIEN | INT_CTL_CTSIEN | INT_CTL_DACQIEN | INT_CTL_DSRVIEN | INT_CTL_STCIEN)},
+		{.index = DAB_EVENT_INTERRUPT_SOURCE, .data = SRVLIST_INTEN },
+		{.index = DAB_XPAD_ENABLE,            .data = (MOT_SLS_ENABLE | DLS_ENABLE)}
+};
+uint8_t currentProperty = 0;
 
 //extern Si46xx_state_en Si46xx_Boot_Tasks(void); // TODO temporär
 
@@ -167,6 +183,40 @@ void Si46xx_radio_tasks(void)
 			}
 			break;
 
+		case Si46xx_Radio_Properties:
+			if(BASE_PROPERTY_NO > 0)
+			{
+				Si46xxCfg.currentProperty.index = baseProperties[currentProperty].index;
+				Si46xxCfg.currentProperty.data  = baseProperties[currentProperty].data;
+				Si46xx_Push(SI46XX_MSG_SET_PROPERTY);
+
+				Si46xxCfg.radio_states++;
+			}
+			else
+			{
+				Si46xxCfg.radio_states = Si46xx_Radio_Config;
+			}
+			break;
+
+		case Si46xx_Radio_Properties_Wait:
+			if(!Si46xx_isBusy()) // TODO: genau beobachten, die Funktion passt noch nicht ganz
+			{
+				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
+				{
+					printf("Si46xx_Radio_Properties_Wait: Si46xx_OK");
+
+					if(++currentProperty >= BASE_PROPERTY_NO)
+					{
+						Si46xxCfg.radio_states++;
+					}
+					else
+					{
+						Si46xxCfg.radio_states = Si46xx_Radio_Properties;
+					}
+				}
+			}
+			break;
+
 		case Si46xx_Radio_Config:
 
 			// TODO: Hier würde dann das Adjust Properties aus dem Programming Guide kommen
@@ -179,6 +229,11 @@ void Si46xx_radio_tasks(void)
 			Si46xx_Push(SI46XX_MSG_GET_PART_INFO);
 			Si46xx_Push(SI46XX_MSG_GET_FUNC_INFO);
 
+			// Set property
+			//Si46xxCfg.wantedProperty.property = DIGITAL_SERVICE_INT_SOURCE;
+			//Si46xxCfg.wantedProperty.data = 1; // DSRVPCKTINT
+			//Si46xx_Push(SI46XX_MSG_SET_PROPERTY);
+
 			Si46xxCfg.radio_states++;
 			break;
 
@@ -187,7 +242,7 @@ void Si46xx_radio_tasks(void)
 			{
 				if(Si46xxCfg.analyzedStatus == Si46xx_OK)
 				{
-					printf("Si46xx_Radio_Config_Wait: Si46xx_OK");
+					printf("Si46xx_Radio_Config_Wait: Si46xx_OK\n");
 
 					Si46xxCfg.deviceStatus.STC = Si46xx_STCINT_COMPLETE; // As first one
 
@@ -199,17 +254,52 @@ void Si46xx_radio_tasks(void)
 		case Si46xx_Radio_Idle:
 
 			// Fetch events:
-			if(Si46xxCfg.events.service_list_int)
+			if(
+					(Si46xxCfg.events.digital_radio_link_change == Si46xx_INTERRUPT) ||
+					(Si46xxCfg.events.seek_tune_complete == Si46xx_INTERRUPT)
+			  )
+			{
+				printf("Event: digital_radio_link_change or seek_tune_complete or digital_radio_event_change\n");
+				Si46xxCfg.events.digital_radio_link_change = Si46xx_NORMAL;
+				Si46xxCfg.events.seek_tune_complete = Si46xx_NORMAL;
+				Si46xx_Push(SI46XX_MSG_DIGRAD_STATUS);
+			}
+
+			if(
+					(Si46xxCfg.events.acquisition_state_change == Si46xx_INTERRUPT) ||
+					(Si46xxCfg.events.digital_radio_event_change == Si46xx_INTERRUPT)
+			  )
+			{
+				Si46xxCfg.events.acquisition_state_change   = Si46xx_NORMAL;
+				Si46xxCfg.events.digital_radio_event_change = Si46xx_NORMAL;
+
+				printf("Event: acquisition_state_change \n");
+
+				if(Si46xxCfg.deviceStatus.VALID == IS_VALID)
+				{
+					//if(Si46xxCfg.deviceStatus.FIC_QUALITY >= xy) TODO: laut Manual soll man FIC Quality und Sig Level prüfen
+					Si46xx_Push(SI46XX_MSG_GET_EVENT_STATUS);
+				}
+				else
+				{
+					// TODO: Hätte er hier dann den Sender verloren?
+				}
+			}
+
+			if(Si46xxCfg.events.service_list_int == Si46xx_INTERRUPT)
 			{
 				printf("Event: service_list_int\n");
-				Si46xxCfg.events.service_list_int = 0;
+				Si46xxCfg.events.service_list_int = Si46xx_NORMAL;
 				Si46xx_Push(SI46XX_MSG_GET_DIGITAL_SERVICE_LIST);
+				Si46xx_Push(SI46XX_MSG_GET_ENSEMBLE_INFO);
 			}
-			if(Si46xxCfg.events.digital_radio_link_change == Si46xx_INTERRUPT)
+
+			if(Si46xxCfg.events.digital_service_data == Si46xx_INTERRUPT)
 			{
-				printf("Event: digital_radio_link_change\n");
-				Si46xxCfg.events.digital_radio_link_change = Si46xx_NORMAL;
-				Si46xx_Push(SI46XX_MSG_DIGRAD_STATUS);
+				printf("Event: digital_service_data\n");
+				Si46xxCfg.events.digital_service_data = Si46xx_NORMAL;
+
+				Si46xx_Push(SI46XX_MSG_GET_DIGITAL_SERVICE_DATA);
 			}
 
 			// TODO: So fortsetzen?
@@ -244,18 +334,7 @@ void Si46xx_function_tasks(void)
 	switch(Si46xxCfg.function_state)
 	{
 		case Si46xx_STATE_IDLE:
-
-			// React to interrupt flags
-			// If service list update is available
-
-			// TODO: Wenn er aus ist, sollte er hier nicht hin.... Reset-Status abfragen
-			if(Si46xxCfg.events.service_list_int == 1)
-			{
-				Si46xxCfg.events.service_list_int = 0;
-
-				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_GET_DIGITAL_SERVICE_LIST]);
-			}
-
+			// Leave idle if messages are waiting
 			if(Si46xxCfg.cb.count > 0)
 			{
 				Si46xxCfg.function_state = Si46xx_STATE_SENDING;

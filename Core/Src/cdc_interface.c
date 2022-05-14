@@ -35,7 +35,7 @@ void cdc_Interface_Tasks(void)
 {
 	size_t len = 10; // TODO: Vergrößern
 	// Ringbuffer tasks for RX and TX ringbuffer
-	cdc_Ringbuf_Tasks(); // TODO: auf Dauer in main.c ?
+	//cdc_Ringbuf_Tasks(); // TODO: war mal in SysTick_Handler(void), jetzt in main()
 
 	// If we transfer a file, forward all data stream
 	if(cdcInterface.fileTransfer_state == CDC_FILE_TRANSFER_ACTIVE)
@@ -293,14 +293,29 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			//extern void Si46xx_Boot(void);
 			//Si46xx_Boot();
 
-			if(Si46xx_send_firmware(FW_SRC_UC, (uint8_t *) &Si46xx_Rom00Patch016, sizeof(Si46xx_Rom00Patch016)) == Si46xx_OK)
+			/*if(Si46xx_send_firmware(FW_SRC_UC, (uint8_t *) &Si46xx_Rom00Patch016, sizeof(Si46xx_Rom00Patch016)) == Si46xx_OK)
 			{
 				printf("send_firmware anstoßen ging\n");
 			}
 			else
 			{
 				printf("send_firmware anstoßen ging nicht\n");
-			}
+			}*/
+
+			extern uint8_t test[1000];// = {0, };
+
+			//for(uint16_t i=0; i<510; i++)
+			//{
+			//	test[i] = i % 0x100;
+			//}
+			//test[300] = '\n';
+			uint16_t laenge = 200;
+
+			printf("writeBinLog_%d\n", laenge);
+			CDC_Transmit_FS(test, laenge);
+
+			printf("dummlaber\n");
+
 		}
 
 		else if(strncmp(messageStr, "sload_fw", 8) == 0) // TODO: noch umbenennen, wenn das auch für Flash-FW-Transfer genutzt wird

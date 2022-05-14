@@ -281,6 +281,7 @@ int main(void)
 	  Si46xx_radio_tasks();
 	  Si46xx_function_tasks();
 
+	  cdc_Ringbuf_Tasks();
 	  cdc_Interface_Tasks();
 
 	  if(HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin) == 1)

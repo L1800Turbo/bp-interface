@@ -87,6 +87,78 @@ enum Si46xx_Image {
 	Si46xx_DAB_DEMOD			= 0x7 	/* DAB demod is active 						*/
 };
 
+/* Properties */
+enum properties
+{
+	//INT_CTL (0x00)
+ 	INT_CTL_ENABLE = 0x0000,
+ 	INT_CTL_REPEAT = 0x0001,
+
+	// DIGITAL_SERVICE (0x81)
+	DIGITAL_SERVICE_INT_SOURCE    = 0x8100,
+	DIGITAL_SERVICE_RESTART_DELAY = 0x8101,
+
+	// DAB_EVENT (0xB3)
+	DAB_EVENT_INTERRUPT_SOURCE    = 0xB300, /* Configures which dab events will set the DEVENTINT status bit. 	         */
+	DAB_EVENT_MIN_SVRLIST_PERIOD  = 0xB301, /* Configures how often service list notifications can occur. 	             */
+	DAB_EVENT_MIN_FREQINFO_PERIOD = 0xB303, /* Configures how often frequency information notifications can occur. 	     */
+	DAB_EVENT_AUDIO_DEMUTE        = 0xB304, /* DAB_EVENT_AUDIO_DEMUTE_DELAY configures the audio demute interrupt delay. */
+
+	// DAB (0xB4)
+	DAB_XPAD_ENABLE = 0xB400,
+	DAB_DRC_OPTION  = 0xB401,
+};
+
+enum INT_CTL_ENABLE_flags
+{
+	INT_CTL_DFICIEN    = (1 << 14),
+	INT_CTL_DEVNTIEN   = (1 << 13),
+	INT_CTL_CTSIEN     = (1 <<  7), // Interrupt when CTS is set
+	INT_CTL_ERR_CMDIEN = (1 <<  6),
+	INT_CTL_DACQIEN    = (1 <<  5), // Interrupt when DACQINT is set
+	INT_CTL_DSRVIEN    = (1 <<  4),	// Interrupt when DSRVINT is set
+	INT_CTL_RSQIEN     = (1 <<  3),
+	INT_CTL_ACFIEN     = (1 <<  1),
+	INT_CTL_STCIEN     = (1 <<  0)  // Interrupt when STCINT is set
+};
+
+enum DAB_EVENT_INTERRUPT_SOURCE_flags
+{
+	RECFG_INTEN    = (1 << 7),
+	RECFGWRN_INTEN = (1 << 6),
+	AUDIO_INTEN    = (1 << 5),
+	ANNO_INTEN     = (1 << 4),
+	OESERV_INTEN   = (1 << 3),
+	SERVLINK_INTEN = (1 << 2),
+	FREQINFO_INTEN = (1 << 1),
+	SRVLIST_INTEN  = (1 << 0)
+};
+
+enum DAB_XPAD_ENABLE_flags
+{
+	ALL_OTHER_ENABLE  = (1 << 15), // Enables all other user application types.
+	UNKNOWN_ENABLE    = (1 << 14), // Enables unknown type. If FIG 0/13 is missing, User application type is unknown..
+	JOURNALINE_ENABLE = (1 << 13), // Enables journaline.
+	MIDDLEWARE_ENABLE = (1 << 12), // Enables middleware.
+	VOICE_ENABLE      = (1 << 11), // Enables voice applications.
+	IPDC_ENABLE       = (1 << 10), // Enables IPDC services.
+	DMB_ENABLE        = (1 <<  9), // Enables DMB.
+	DABJAVA_ENABLE    = (1 <<  8), // Enables DAB JAVA.
+	EPG_ENABLE        = (1 <<  7), // Enables EPG.
+	TMC_ENABLE        = (1 <<  6), // Enables TMC.
+	DGPS_ENABLE       = (1 <<  5), // Enables DGPS.
+	TPEG_ENABLE       = (1 <<  4), // Enables TPEG.
+	MOT_BWS_ENABLE    = (1 <<  3), // Enables MOT Broadcaset Web Site.
+	MOT_SLS_ENABLE    = (1 <<  2), // Enables MOT slideshow.
+	DLS_ENABLE        = (1 <<  0)  // Enables PAD delivered DLS packets. (default)
+};
+
+struct property
+{
+	enum properties index;
+	uint16_t data;
+};
+
 typedef struct
 {
 	/* Clear-to-send (bit 7 of the STATUS field which is read by the user) Indicates whether the user may send a new firmware-interpreted command and
@@ -96,7 +168,6 @@ typedef struct
 	 * Therefore, any changes made to the state of CTS by the processor will not affect a serial port transaction that is currently in progress.
 	 */
 	enum Si46xx_CTS CTS;
-	enum Si46xx_STCINT STC;		/* Seek/Tune Complete Interrupt */
 
 	enum Si46xx_ERR_REPLY ERR_CMD;
 	enum Si46xx_PUP_STATE PUP; /* Indicates the powerup state of the system. */
@@ -108,6 +179,8 @@ typedef struct
 									   This is generally caused by running at a SPI clock rate that is too fast for the data arbiter and memory speed. */
 	enum Si46xx_ERR_REPLY ARBERR;	/* When set an arbiter error has occurred. */
 	enum Si46xx_ERR_REPLY ERRNR; /* When set a non-recoverable error has occurred. The system keep alive timer has expired. */
+
+	enum Si46xx_STCINT STC;		/* Seek/Tune Complete */
 
 	/* DIGRAD status values */
 	enum Si46xx_VALID_en
@@ -169,14 +242,19 @@ typedef struct
 	uint16_t componentID;
 	uint8_t tmID;
 
-	uint8_t ascTy_dscTy;	// ASCTy: Audio service component type, DSCTy: Data service component type
+	uint8_t ascTy_dscTy;	// ASCTy: Audio service component type, DSCTy: Data service component type TODO: enum
 
 }dab_component_t;
 
 typedef struct
 {
 	uint32_t serviceID;
-	uint8_t pdFlag;
+	enum program_data_flag
+	{
+		AUDIO_SERVICE = 0,
+		DATA_SERVICE  = 1
+	}pdFlag;
+	//uint8_t pdFlag;
 	uint8_t numberComponents;
 	char serviceLabel[16+1];
 
@@ -282,7 +360,10 @@ struct Si46xx_Config
 	/* Analyzed status after a received message */
 	Si46xx_statusType analyzedStatus;
 
-	/* State of generic radio state machine */
+	/* Current property for functions TODO: Umplatzieren zu functions? */
+	struct property currentProperty;
+
+	/* State of generic radio state machine */ // TODO hier raus, in si46xx
 	enum radio_states_en
 	{
 		Si46xx_Radio_Idle = 0,
@@ -294,6 +375,8 @@ struct Si46xx_Config
 		Si46xx_Radio_FlashFirmware_Wait,
 		Si46xx_Radio_Boot,
 		Si46xx_Radio_Boot_Wait,
+		Si46xx_Radio_Properties,
+		Si46xx_Radio_Properties_Wait,
 		Si46xx_Radio_Config,
 		Si46xx_Radio_Config_Wait,
 		// Konfiguration wie Senderlisten hier...
@@ -335,6 +418,10 @@ struct Si46xx_Config
 		 * Service by sending the DAB_DIGRAD_STATUS command.
 		 */
 		enum Si46xx_INT digital_radio_link_change;
+		enum Si46xx_INT seek_tune_complete;
+		enum Si46xx_INT acquisition_state_change;
+		enum Si46xx_INT digital_service_data;
+		enum Si46xx_INT digital_radio_event_change;
 
 		// Von SI46XX_MSG_GET_EVENT_STATUS
 		uint8_t freq_info_int:1; 	/* New Frequency Information interrupt. Indicates that new Frequency Information is available. The Frequency Information list is retrieved with the DAB_GET_FREQ_INFO command. The rate at which frequency information interrupts can occur is defined by the DAB_EVENT_MIN_FREQINFO_PERIOD property. */

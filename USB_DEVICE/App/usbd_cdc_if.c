@@ -457,6 +457,7 @@ uint8_t CDC_Transmit_FS(uint8_t* Buf, uint16_t Len)
 	// Step 2 : compare with argument
 	if (cap < Len)
 	{
+
 		return USBD_BUSY;   // Not enough room to copy "buf" into the FIFO => error TODO: ist es dann nicht zu spät?
 	}
 
@@ -576,14 +577,9 @@ void cdc_Ringbuf_Tasks(void)
 			//if(RX_BUFFER_MAX_WRITE_INDEX - 1 - cdc_ringbuf_length(&cdc_rx_rb) > 0)
 			{
 				cdc_rx_rb.bufferState = BUFFER_FREE;
-
-				HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_RESET);
-
 				// Receive the next packet
 				USBD_CDC_ReceivePacket(&hUsbDeviceFS);
 			}
-			else // TODO nur für Tests
-				HAL_GPIO_WritePin(LED_RED_Port, LED_RED_Pin, GPIO_PIN_SET);
 		}
 	}
 
@@ -623,6 +619,11 @@ void cdc_Ringbuf_Tasks(void)
 size_t cdc_ringbuf_Rx_getLength(void)
 {
 	return cdc_ringbuf_length(&cdc_rx_rb);
+}
+
+size_t cdc_ringbuf_Tx_getLength(void)
+{
+	return cdc_ringbuf_length(&cdc_tx_rb);
 }
 
 /**
