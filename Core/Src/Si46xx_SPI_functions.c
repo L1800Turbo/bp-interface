@@ -7,7 +7,6 @@
  *      Author: kai
  */
 #include "Si46xx_SPI_functions.h"
-#include "Si46xx_DAB_digital_service_data.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -361,7 +360,7 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 	if(Si46xxCfg.deviceStatus.STC == Si46xx_STCINT_COMPLETE) // TODO: muss nach der Funktion zum Refreshen...
 	{
 		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
-		CDC_Transmit_FS(&DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
+		CDC_Transmit_FS((uint8_t*) &DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
 	}
 
 	return status;
@@ -1198,544 +1197,59 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceData_sendFunc()
 	return state;
 }
 
-// TODO: Temporär zum testen
-struct mot_status
-{
-	uint8_t startHeader:1; // Wenn der header fertig ist
-	uint8_t startBlock:1;  // Wenn der nächste Block startet
-	uint16_t currentTransportId; // Setzen, wenn der Header fertig ist
-
-	char * currentName; // Aktueller Dateiname oder so
-}mot_status;
-
-uint8_t test[1000] = {0, };
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceData_receiveFunc()
 {
 	uint8_t data[4096] = {0,}; // TODO: Erstmal nur so festgelegt
 	uint16_t byte_count = 0;
 
-	enum data_source_en
-	{
-		DATA_SERVICE = 0x0, /* Indicates that the payload is from a standard data service and DATA_TYPE is DSCTy. */
-		PAD_DATA     = 0x1, /* Indicates that the payload is non-DLS PAD and DATA_TYPE is DSCTy. */
-		PAD_DLS      = 0x2  /* Indicates that the payload is DLS PAD and DATA_TYPE is 0. */
-	};
-
-	enum dsc_types //  Data Service Component Types: ETSI TS 101 756 Table 2b
-	{
-		DSC_TDC   =  5, // Transparent Data Channel (TDC), see ETSI TS 101 759
-		DSC_MPEG2 = 24, // MPEG-2 Transport Stream, see ETSI TS 102 427
-		DSC_MOT   = 60, // Multimedia Object Transfer (MOT), see ETSI EN 301 234
-		DSC_PROP  = 61  // Proprietary service: no DSCTy signalled
-	};
-
-	// ETSI TS 102 980 Ch. 6.0
-	struct dl_plus_tag
-	{
-		uint8_t content_type;
-		uint8_t start_marker;
-		uint8_t length_marker;
-	};
-
-	// according to ETSI TS 102 980 Section 7.4.5.2: XPAD DLS prefix with Si46xx API
-	struct dls_str
-	{
-		uint8_t toggle_bit:1;
-		uint8_t C_flag:1;
-
-		enum command_field
-		{
-			CLEAR_DISPLAY_CMD = 0b0001,
-			DL_PLUS_CMD       = 0b0010
-			// ETSI: all other codes are reserved for future use
-		}command;
-
-		// Field 2
-		enum charset_field
-		{
-			EBU_Latin_based     = 0b0000,
-			UCS2_transformation = 0b0110,
-			UTF8_transformation = 0b1111
-		}charset;
-
-		uint8_t link:1;
-
-		char msg[128+1];
-
-		// Body
-		uint8_t item_toggle_bit:1;
-		uint8_t item_running_bit:1;
-		uint8_t number_tags:2;
-
-	}dls_payload;
-
-	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 0x17);
+	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 0x18); // TODO testweise 0x18
 
 	byte_count = data[0x13] | (data[0x14] << 8);
 
 	printf("byte_count: %u\n", byte_count);
 
-	// temporär:
+	// TODO temporär:
 	if(byte_count > sizeof(data)-0x18) byte_count = sizeof(data)-0x18;
 
-	state = Si46xx_SPIgetAnalyzeStatus(data, 0x17 + byte_count); // TODO state auswerten..
+	state = Si46xx_SPIgetAnalyzeStatus(data, 0x18 + byte_count); // TODO state auswerten.. // TODO testweise 0x18
 
 	enum data_source_en data_src = (data[8] >> 6) & 0x2;
 	enum dsc_types dscty = data[8] & 0x3F;
 
-	uint16_t uatype = data[0x11] | (data[0x12] << 8); //Si46xx_Msg_DabGetComponentInfo_receiveFunc hat ein Enum dafür, aber das deckt sich nicht mit Si46?
+	enum user_application_type_en uatype = data[0x11] | (data[0x12] << 8); //Si46xx_Msg_DabGetComponentInfo_receiveFunc hat ein Enum dafür, aber das deckt sich nicht mit Si46?
 	uint16_t seg_num  = data[0x15] | (data[0x16] << 8);
 	uint16_t num_segs = data[0x17] | (data[0x18] << 8);
 
-	printf("uatype: %d, data_src: %d (dscty: %d) seg_num: %u num_segs: %u\n", uatype, data_src, dscty, seg_num, num_segs);
+	//printf("uatype: %d, data_src: %d (dscty: %d) seg_num: %u num_segs: %u\n", uatype, data_src, dscty, seg_num, num_segs);
+	printf("sPrintDigServiceData_data_source_en#%u_dsc_types#%u_user_application_type_en#%u_%u_%u\n",
+			data_src, dscty, uatype, seg_num, num_segs);
 
-	// Dynamic label
+	// Gucken, welche der drei Quellen TODO
 	switch(data_src)
 	{
-		case DATA_SERVICE:
+		case SOURCE_DATA_SERVICE:
 			if(dscty == DSC_MOT)
 			{
 				// TODO Externe Funktion mit Parametern: DSCTy, UA-Type, Payload-Len, Pointer zu den Daten
-				//
-
-				// EN 300 401 Figure 12
-				struct msc_data_group
-				{
-					struct msc_data_group_header
-					{
-						// Byte 0
-						uint8_t extension_flag:1;   // Extension flag: this 1-bit flag shall indicate whether the extension field is present
-						uint8_t crc_flag:1;			// CRC flag: this 1-bit flag shall indicate whether there is a CRC at the end of the MSC data group
-						uint8_t segment_flag:1;     // Segment flag: this 1-bit flag shall indicate whether the segment field is present, or not
-						uint8_t user_access_flag:1; // User access flag: this 1-bit flag shall indicate whether the user access field is present, or not
-						uint8_t data_group_type:4;  /* Data group type: this 4-bit field shall define the type of data carried in the data group data field.
-													   The following types are defined for use by all data service components:
-														b3 - b0
-														0 0 0 0 : General data;
-														0 0 0 1 : CA messages (see ETSI TS 102 367 [4]).
-													   The remaining types are dependent upon the value of the DSCTy and defined by the relevant
-													   document (see clause 6.3.1). */
-
-						// Byte 1
-						/* Continuity index: the binary value of this 4-bit field shall be incremented each time a MSC data group of a particular type,
-						 *  with a content different from that of the immediately preceding data group of the same type, is transmitted.  */
-						uint8_t continuity_index:4;
-						/* Repetition index: the binary value of this 4-bit field shall signal the remaining number of repetitions of a MSC data group
-						 * with the same data content, occurring in successive MSC data groups of the same type. Exceptionally, the code "1111"
-						 * shall be used to signal that the repetition continues for an undefined period. */
-						uint8_t repetition_index:4;
-
-						// Byte 2+3
-						/* Extension field: this 16-bit field shall be used to carry information for CA on data group level (see ETSI TS 102 367).
-						 * For other Data group types, the Extension field is reserved for future additions to the Data group header. */
-						uint16_t extension_field;
-					}group_header;
-
-					struct msc_segment_field
-					{
-						// Byte 1+2
-						/*  Segment number: this 15-bit field, coded as an unsigned binary number (in the range 0 to 32 767),
-						 * shall indicate the segment number. */
-						uint16_t segment_number:15;
-						/* Last: this 1-bit flag shall indicate whether the segment number field is the last or
-						 * whether there are more to be transmitted, as follows:
-						 *   0: more segments to follow;
-						 *   1: last segment. */
-						uint8_t last:1;
-					}segment_field;
-
-					struct msc_user_access_field
-					{
-						// Byte 0
-						uint8_t transport_id_flag:1; // Transport Id flag: this 1-bit flag shall indicate whether the Transport Id field is present, or not
-
-						/*  Length indicator: this 4-bit field, coded as an unsigned binary number (in the range 0 to 15), shall
-						 * indicate the length n in bytes of the Transport Id and End user address fields. */
-						uint8_t length_indicator:4;
-
-						// Byte 1+2
-						uint16_t transport_id;
-
-						// Byte 3-... length: (length_indicator-2)
-						uint8_t * end_user_address_fied; // TODO: erst nur nen Pointer...
-					}user_access_field; // TODO: End user address field??
-
-					uint16_t crc;
-
-				};
-
-				uint8_t * payloadPtr = data + 0x19;
-				uint8_t * currentPtr = payloadPtr; //data + 0x19; // TODO: payloadPtr macht einen Error...
-
-				struct msc_data_group data_group =
-				{
-						.group_header =
-						{
-								.extension_flag   = (currentPtr[0] >> 7) & 0x01,
-								.crc_flag         = (currentPtr[0] >> 6) & 0x01,
-								.segment_flag     = (currentPtr[0] >> 5) & 0x01,
-								.user_access_flag = (currentPtr[0] >> 4) & 0x01,
-								.data_group_type  = currentPtr[0] & 0x0F,
-
-								.continuity_index = (currentPtr[1] >> 4) & 0x0F,
-								.repetition_index = (currentPtr[1] >> 0) & 0x0F
-						}
-				};
-				currentPtr += 2;
-
-				// Extension field?
-				if(data_group.group_header.extension_flag == 1)
-				{
-					data_group.group_header.extension_field = currentPtr[0] + (currentPtr[1] << 8);
-
-					// include this area
-					currentPtr += 2;
-				}
-
-				// Segment field if activated
-				if(data_group.group_header.segment_flag == 1)
-				{
-					data_group.segment_field.segment_number = currentPtr[0] & 0x7F;
-					data_group.segment_field.last           = (currentPtr[0] >> 7) & 0x01;
-
-					printf("Segment: number: %u, last: %u\n", data_group.segment_field.segment_number, data_group.segment_field.last);
-
-					// include this area
-					currentPtr += 2;
-				}
-
-				// User access field, if activated
-				if(data_group.group_header.user_access_flag == 1)
-				{
-					uint8_t length_counter = 0;
-
-					data_group.user_access_field.transport_id_flag = (currentPtr[0] >> 4) & 0x01;
-					data_group.user_access_field.length_indicator  = (currentPtr[0] >> 0) & 0x0F;
-
-					length_counter = data_group.user_access_field.length_indicator;
-
-					printf("transport_id_flag %u, length_indicator: %u\n",
-							data_group.user_access_field.transport_id_flag, data_group.user_access_field.length_indicator);
-
-					currentPtr++;
-
-					//Transport ID if activated
-					if(data_group.user_access_field.transport_id_flag == 1)
-					{
-						data_group.user_access_field.transport_id = currentPtr[0] + (currentPtr[1] << 8);
-						printf("transport_id: %u\n", data_group.user_access_field.transport_id);
-
-						currentPtr += 2;
-						//length_counter -= 2; TODO: Wird der jetzt mitgezählt oder nicht?
-					}
-
-					// End User Address field -> TODO: erst nur ein Ptr. Wo kommt das vor?
-
-					// end User address field length, calculation acc. ETSI EN 300 401 Fig. 12
-					currentPtr += length_counter;
-				}
-
-				printf("extension_flag %u, crc_flag %u, segment_flag %u, user_access_flag %u, data_group_type %u\n",
-						data_group.group_header.extension_flag, data_group.group_header.crc_flag, data_group.group_header.segment_flag,
-						data_group.group_header.user_access_flag, data_group.group_header.data_group_type);
-
-				printf("continuity_index %u, repetition_index %u\n", data_group.group_header.continuity_index, data_group.group_header.repetition_index);
-
-				// Test TODO für MOT
-				struct mot_header
-				{
-					/* BodySize: This 28-bit field, coded as an unsigned binary number, indicates the total size of the body in bytes.
-					 * If the body size signalled by this parameter does not correspond to the size of the reassembled MOT body, then the
-					 * MOT body shall be discarded. */
-					uint32_t bodySize:28;
-
-					/* HeaderSize: This 13-bit field, coded as an unsigned binary number, indicates the total size of the header information in
-					 * bytes including the header core size of 7 bytes. -> die 7 bytes sind dieser struct */
-					uint16_t headerSize:13;
-
-					/* ContentType: This 6-bit field indicates the main category of the body's content.
-					 * The interpretation of this field shall be defined in TS 101 756, table 17. */
-					uint8_t contentType:6;
-
-					/* ContentSubType: This 9-bit field indicates the exact type of the body's content depending on the value of
-					 * the field ContentType. The interpretation of this field shall be defined in TS 101 756, table 17. */
-					uint16_t contentSubType:9;
-				};
-
-				struct mot_header_extension
-				{
-					/* PLI (Parameter Length Indicator): This 2-bit field describes the total length of the associated parameter.
-					 * The following definitions apply:
-					 * - 0 0 total parameter length = 1 byte, no DataField available;
-					 * - 0 1 total parameter length = 2 bytes, length of DataField is 1 byte;
-					 * - 1 0 total parameter length = 5 bytes; length of DataField is 4 bytes;
-					 * - 1 1 total parameter length depends on the DataFieldLength indicator (the maximum parameter length is 32 770 bytes). */
-					uint8_t PLI:2;
-
-					uint8_t ParamId:6; // ParamId (Parameter Identifier): This 6-bit field identifies the parameter.
-					// TODO: Hier nen Enum draus machen
-
-					uint32_t dataField;
-
-					/* Ext (ExtensionFlag): This 1-bit field specifies the length of the DataFieldLength Indicator and is coded as follows:
-					 *  0: the total parameter length is derived from the next 7 bits;
-					 *  1: the total parameter length is derived from the next 15 bits.
-					 *
-					 *  The ExtensionFlag is only present if the PLI field is set to "11". */
-					enum mot_header_ext_length
-					{
-						EXT_LENGTH_7BIT  = 0,
-						EXT_LENGTH_15BIT = 1
-					}ext;
-
-					/* DataFieldLength Indicator: This field specifies as an unsigned binary number the length of the parameter's DataField in bytes.
-					 * The length of this field is either 7 bits or 15 bits, depending on the setting of the ExtensionFlag.
-					 * The DataFieldLength Indicator is only present if the PLI field is set to "11". */
-					uint16_t dataFieldLength:15;
-				};
-
-				// TEST Header einlesen
-				if(data_group.group_header.data_group_type == 3)
-				{
-					struct mot_header header = {
-							.bodySize       = (currentPtr[3] | (currentPtr[2]<<8) | (currentPtr[1]<<16) | (currentPtr[0]<<24)) >> 4,
-							.headerSize     = ((currentPtr[3] & 0x0F) << 8) | (currentPtr[4] << 1) | (currentPtr[5] >> 7),
-							.contentType    = (currentPtr[5] >> 1) & 0x3F,
-							.contentSubType = ((currentPtr[5] & 0x01) << 8) | currentPtr[6]
-					};
-
-					printf("bodySize %u, headerSize %u, contentType %u, contentSubType %u\n",
-							header.bodySize, header.headerSize, header.contentType, header.contentSubType);
-
-					// TODO: Bodysize unten abfragen, ob die Größe erreicht ist
-
-					// Jump the header length
-					currentPtr += 7;
-					header.headerSize -= 7;
-
-					while(header.headerSize > 0) // TODO: später eine While?
-					{
-						struct mot_header_extension ext = {
-								.PLI     = (currentPtr[0] >> 6) & 0x03,
-								.ParamId = currentPtr[0] & 0x3F
-						};
-
-						currentPtr++;
-						header.headerSize--;
-
-						printf("Header Extension PLI %u, ParamId %u\n", ext.PLI, ext.ParamId);
-
-						// TODO: den weiteren KRam
-						//uint8_t * dataFieldDyn;
-						switch(ext.PLI)
-						{
-							case 0b00:
-
-								break;
-
-							case 0b01:
-								// .... TODO
-
-								currentPtr++;
-								header.headerSize--;
-								break;
-
-							case 0b10:
-								ext.dataField = currentPtr[3] | (currentPtr[2]<<8) | (currentPtr[1]<<16) | (currentPtr[0]<<24);
-								printf(" -> Data field: %lX\n", ext.dataField);
-
-								currentPtr += 4;
-								header.headerSize -=4;
-								break;
-
-							case 0b11:
-								ext.ext = (currentPtr[0] >> 7) & 0x01;
-
-								// Chose between 7 or 15 bit DataFieldLength
-								if(ext.ext == EXT_LENGTH_7BIT)
-								{
-									ext.dataFieldLength = currentPtr[0] & 0x7F;
-									currentPtr++;
-									header.headerSize--;
-								}
-								else
-								{
-									ext.dataFieldLength = ((currentPtr[0] & 0x7F) << 8) | currentPtr[1];
-									currentPtr += 2;
-									header.headerSize -= 2;
-								}
-
-								// TODO: Datafield.. aber nicht 32bit zwansäuftig
-								//dataFieldDyn = (uint8_t *) malloc(ext.dataFieldLength * sizeof(uint8_t)+1);
-								//memcpy(dataFieldDyn, currentPtr, ext.dataFieldLength);
-								//dataFieldDyn[ext.dataFieldLength]=0; // testweise String abschließen TODO
-
-								//free(dataFieldDyn);
-
-								// Test für ContentName
-								// Character set indicator 4bit, rfu 4bit
-								currentPtr++;
-								header.headerSize--;
-
-								mot_status.currentName = malloc(ext.dataFieldLength+1-1);
-								mot_status.currentName[ext.dataFieldLength-1] = 0;
-								memcpy(mot_status.currentName, currentPtr, ext.dataFieldLength-1);
-
-								printf("Datafield: %s\n", currentPtr); // TODO: Gefährlicher Test, 0 am Ende nicht sicher...
-
-								currentPtr += (ext.dataFieldLength-1);
-								header.headerSize -= (ext.dataFieldLength-1);
-
-								break;
-						}
-
-						// TODO: hier dann die Funktion evaluieren, z.B.  ContentName -> aber unten erst CRC!!
-
-
-					}
-
-					// Activate new file transfer on last block
-					if(data_group.segment_field.last == 1)
-					{
-						// TODO: dateiname und so muss dann auch im Status liegen
-						if(mot_status.currentName != 0)
-						{
-							printf("sSetLogFilename_%s\n", mot_status.currentName); // noch falsch...
-							mot_status.startHeader = 1; // Restart on the next header
-							//mot_status.startBlock  = 1; // Start new file on the next header TODO hier erst fragen, ob der andere fertig ist
-							mot_status.currentTransportId = data_group.user_access_field.transport_id;
-
-							free(mot_status.currentName);
-						}
-
-
-					}
-
-				}
-				else if(data_group.group_header.data_group_type == 4)
-				{
-
-					// TODO: Fürs erste dumpen
-					if(mot_status.currentTransportId == data_group.user_access_field.transport_id)
-						//TODO: Was sonst??
-					{
-						uint16_t logSize = byte_count-((uint32_t)(currentPtr-payloadPtr))-2;
-						//uint16_t logSize = byte_count-((uint32_t)(currentPtr-data-0x17));
-
-						// TODO auch blödsin... der schneidet irgendwo was ab irgendwie... 500 byte zu viel? ka..
-						//logSize -= 2;
-
-						printf("-> logSize %u byte\n", logSize);
-
-						memcpy(&test, currentPtr, logSize);
-
-						/*char writeDings[] = "writeBinLog_501\n";
-						extern USBD_HandleTypeDef hUsbDeviceFS;
-
-						USBD_CDC_SetTxBuffer(&hUsbDeviceFS, (uint8_t*) &writeDings, sizeof(writeDings));
-						USBD_CDC_TransmitPacket(&hUsbDeviceFS);
-
-						USBD_CDC_SetTxBuffer(&hUsbDeviceFS, currentPtr, logSize);
-						USBD_CDC_TransmitPacket(&hUsbDeviceFS);*/
-
-						printf("writeBinLog_%u\n", logSize);
-						CDC_Transmit_FS(currentPtr, logSize);
-						//if(CDC_Transmit_FS(currentPtr, logSize) == USBD_BUSY) // TODO: CRC am Ende noch weg: -2
-						//{
-						//	printf("CDC war busy!\n");
-						//}
-
-
-						printf("<b>Laber!</b>\n");
-
-						//noch eine Idee.... mit memcpy erstmal in einen anderen Buffer. Dann senden
-					}
-				}
-
-
-
-				// TODO: Das letzte Feld ist CRC. Oben berechnen besser..
-
+				// uatype so
+
+				Si46xx_DAB_progress_DSC_MOT(&data[25], uatype, byte_count);
+			}
+			else if(dscty == DSC_TDC)
+			{
+				printf("sSetLogFilename_%s\n", "dumpDTC.bin"); // TODO Test
+				printf("writeBinLog_%u\n", byte_count);
+				CDC_Transmit_FS(&data[25], byte_count);
 			}
 			break;
 
-		case PAD_DATA:
+		case SOURCE_PAD_DATA:
 			printf("PAD_DATA ist noch nicht implementiert...\n");
 			break;
-		case PAD_DLS: // TODO: in eigene Funktion?
-			dls_payload.toggle_bit = (data[25] >> 7) & 0x1;
-			dls_payload.C_flag     = (data[25] >> 4) & 0x1;
+		case SOURCE_PAD_DLS:
 
-			if(dls_payload.C_flag)
-			{
-				dls_payload.command = (data[25]) & 0xF;
-				dls_payload.link    = (data[25] >> 4) & 0x1;
+			Si46xx_DAB_progress_DLS_payload(&data[25], byte_count);
 
-				// CId: immer 0 0 0 0: (data[27] >> 4) & 0xF;
-				dls_payload.item_toggle_bit  = (data[27] >> 3) & 0x1;
-				dls_payload.item_running_bit = (data[27] >> 2) & 0x1;
-				dls_payload.number_tags      = (data[27] >> 0) & 0x3;
-
-				printf("item_toggle_bit %u, item_running_bit %u, number_tags %u\n", dls_payload.item_toggle_bit, dls_payload.item_running_bit, dls_payload.number_tags);
-				switch(dls_payload.command)
-				{
-					case CLEAR_DISPLAY_CMD:
-						printf("CLEAR_DISPLAY_CMD\n");
-						break;
-
-					case DL_PLUS_CMD:
-						printf("DL_PLUS_CMD\n");
-						break;
-				}
-
-				uint8_t * dl_plus_index = &data[28];
-				for(uint8_t i=0; i<dls_payload.number_tags; i++)
-				{
-					char currentMsg[128] = {0,};
-					struct dl_plus_tag tag =
-					{
-							.content_type = *dl_plus_index & 0x7F,
-							.start_marker = *(dl_plus_index+1) & 0x7F,
-							.length_marker = *(dl_plus_index+2) & 0x7F,
-					};
-
-					// TODO: Abfrage, ob in der MSG überhaupt schon was empfangen wurde... vllt kam die Nachricht vorher
-
-					memcpy(&currentMsg, &dls_payload.msg[tag.start_marker], tag.length_marker+1);
-					//*(currentMsg + tag.length_marker + 1) = 0;
-					printf("content type %u: %s\n", tag.content_type, currentMsg);
-
-					dl_plus_index += 3;
-				}
-
-				// Every DL Plus tag is 24bit long
-
-				// TODO: hier For-Schleife über Kapitel 6
-			}
-			else
-			{
-				dls_payload.charset = (data[25] >> 4) & 0xF;
-
-				memset(&dls_payload.msg, 0, sizeof(dls_payload.msg));
-				memcpy(&dls_payload.msg, &data[27], byte_count-2);
-
-				switch(dls_payload.charset)
-				{
-					case EBU_Latin_based:
-						printf("Codepage: EBU_Latin_based\n");
-						break;
-
-					case UCS2_transformation:
-						printf("Codepage: UCS2_transformation\n");
-						break;
-
-					case UTF8_transformation:
-						printf("Codepage: UTF8_transformation\n");
-						break;
-				}
-
-				printf("Current service data text: %s\n", dls_payload.msg);
-			}
 			break;
 
 	}
@@ -2018,26 +1532,31 @@ Si46xx_statusType Si46xx_Msg_DabGetComponentInfo_receiveFunc()
 
 	// TODO: erstmal hier definieren, falls irgendwann gebraucht
 
-	// Source: ETSI TS 101 756 V2.1.1 Table 16: User Application Types
-	enum user_application_type_en
-	{
-		UATYPE_SlideShow   = 0x002, /* ETSI TS 101 499 */
-		UATYPE_TPEG        = 0x004,
-		UATYPE_SPI         = 0x007, /* ETSI TS 102 818 */
-		UATYPE_DMB         = 0x009, /* ETSI TS 102 428 */
-		UATYPE_Filecasting = 0x00D, /* ETSI TS 103 177 */
-		UATYPE_Journaline  = 0x44A, /* ETSI TS 102 979 */
+	enum dab_languages language     = data[0x07] & 0x3F;
+	enum dab_charset_values charset = data[0x08] & 0x3F;
 
-		// all others are not used or reserved
-	};
+	char label[16+1] = {0, };
+	memcpy(&label, &data[0x09], 16);
 
-	uint8_t ua_num       = data[0x1B]; /* The number of user application types. */
-	uint8_t ua_total_len = data[0x1C]; /* The total length (in byte) of the UATYPE, UADATALEN and UADATA fields, including the padding bytes which is described in UADATAN field. */
+	char abrevLabel[2+1] = {0, };
+	memcpy(&abrevLabel, &data[0x19], 2);
+
+
+	uint8_t num_ua     = data[0x1B]; /* The number of user application types. */
+	uint8_t ua_bytelen = data[0x1C]; /* The total length (in byte) of the UATYPE, UADATALEN and UADATA fields, including the padding bytes which is described in UADATAN field. */
 	enum user_application_type_en ua_type = data[0x1D] | (data[0x1E]<<8);
 	uint8_t ua_data_len = data[0x1F]; /* The UADATA field length, excluding the padding byte which is described in UADATAN field. */
 
+	/* Slideshow:
+	 * ETSI TS 101 499 V3.1.1 , 6.1
+	 * No user application data bytes shall be conveyed. The receiver shall discard all user application data bytes.
+	 */
 
 	// TODO auswerten und in Variablen packen
+
+	printf("Component Info:\n");
+	printf("language %u, charset %u, label %s, abrevLabel %s\n", language, charset, label, abrevLabel);
+	printf("num_ua %u, ua_bytelen %u, ua_type %u, ua_data_len %u\n", num_ua, ua_bytelen, ua_type, ua_data_len);
 
 	return state;
 }

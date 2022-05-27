@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include "stm32f4xx_hal.h"
 #include "Si46xx_DAB_frequencies.h"
+#include "Si46xx_DAB_digital_service_data.h"
 #include "circular_buffer.h"
 
 #define MAX_SERVICES 50

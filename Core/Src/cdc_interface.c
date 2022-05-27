@@ -302,19 +302,69 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 				printf("send_firmware anstoßen ging nicht\n");
 			}*/
 
-			extern uint8_t test[1000];// = {0, };
+			//extern uint8_t test[1000];// = {0, };
 
 			//for(uint16_t i=0; i<510; i++)
 			//{
 			//	test[i] = i % 0x100;
 			//}
 			//test[300] = '\n';
-			uint16_t laenge = 200;
+			//uint16_t laenge = 200;
 
-			printf("writeBinLog_%d\n", laenge);
-			CDC_Transmit_FS(test, laenge);
+			//printf("writeBinLog_%d\n", laenge);
+			//CDC_Transmit_FS(test, laenge);
 
-			printf("dummlaber\n");
+			printf("Laber: öäüß é æ\n");
+
+			char payload[] = {0x40, 0x93, 0x91, 0};
+			uint8_t byte_count = sizeof(payload);
+
+			char bloedSabbel[128];
+
+			char * msgPtr = bloedSabbel;
+
+			struct EBU_Latin_table
+			{
+				char ebu;
+				char utf8[4];
+			};
+
+#define CHAR_TABLE_SIZE 2
+			struct EBU_Latin_table charTable[CHAR_TABLE_SIZE] =
+			{
+				{.ebu = 0x91, .utf8 = "ä"},
+				{.ebu = 0x97, .utf8 = "ö"}
+			};
+
+			int8_t found = -1;
+			for(uint8_t i=0; i<byte_count-2+2; i++)
+			//while(*msgPtr != 0)
+			{
+				for(uint8_t j=0; j<sizeof(charTable); j++)
+				{
+					if(payload[i] == charTable[j].ebu)
+					{
+						memcpy(msgPtr, charTable[j].utf8, strlen(charTable[j].utf8));
+						msgPtr += strlen(charTable[j].utf8);
+
+						found = 1;
+						break;
+					}
+				}
+
+				if(found == 1)
+				{
+					continue;
+				}
+				else
+				{
+					*msgPtr = payload[i];
+					msgPtr++;
+				}
+
+			}
+
+			printf("Sabbel: %s\n", bloedSabbel);
 
 		}
 
