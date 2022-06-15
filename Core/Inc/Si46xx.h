@@ -20,6 +20,17 @@
 
 #define SI46XX_BOOT_MAX_BUF_SIZE 4092
 
+enum DAB_play_functions {
+	DAB_Play_none = 0,
+	DAB_Play_StartUp,
+	DAB_Play_Up,
+	DAB_Play_Down,
+	DAB_Play_Left,
+	DAB_Play_Right,
+	//DAB_Play_AutoFrequency, TODO: wohl eher nicht hier
+	//DAB_Play_TrackInfo
+};
+
 enum Si46xx_Wait_en {
 	TIME_LEFT = 0,
 	TIME_OVER
@@ -36,6 +47,9 @@ uint8_t Si46xx_isBusy(void);
 
 void Si46xx_radio_tasks(void);
 void Si46xx_function_tasks(void);
+
+// Functions for control from radio TODO prototyp
+void Si46xx_DAB_play(enum DAB_play_functions);
 
 HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi);
 

@@ -352,15 +352,18 @@ Si46xx_statusType Si46xx_SPIgetAnalyzeStatus(uint8_t * data, uint16_t len)
 			break;
 	}
 
-	CDC_Transmit_FS((uint8_t *) "sst ", 4);
-	CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
+	//CDC_Transmit_FS((uint8_t *) "sst ", 4);
+	printf("sst_%u_%u_%u_%u_%u\n",
+			Si46xxCfg.deviceStatus.CTS, Si46xxCfg.deviceStatus.STC, Si46xxCfg.deviceStatus.PUP,
+			Si46xxCfg.cfg.audio_only, Si46xxCfg.cfg.forwardIfInvalid);
+	//CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
 	//xCDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
-	CDC_Transmit_FS((uint8_t*) "\n", 1);
+	//CDC_Transmit_FS((uint8_t*) "\n", 1);
 
 	if(Si46xxCfg.deviceStatus.STC == Si46xx_STCINT_COMPLETE) // TODO: muss nach der Funktion zum Refreshen...
 	{
 		printf("sCurFreq_%d\n", sizeof(DAB_frequency_dt));
-		CDC_Transmit_FS((uint8_t*) &DAB_frequency_list[Si46xxCfg.freqIndex], sizeof(DAB_frequency_dt));
+		CDC_Transmit_FS((uint8_t*) &DAB_frequency_list[Si46xxCfg.wantedService.freqIndex], sizeof(DAB_frequency_dt));
 	}
 
 	return status;
@@ -840,7 +843,6 @@ HAL_StatusTypeDef Si46xx_Msg_GetDigitalServiceList_sendFunc()
 
 Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 {
-	//uint8_t data[7]; // TODO 7, temporär festgelegt, was ist der maximale Wert hier?
 	uint8_t * data = spiBuffer;
 	dab_channel_dt * chan = &Si46xxCfg.channelData;
 
@@ -855,16 +857,11 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 	// clear old channel data
 	memset(chan, 0x00, sizeof(dab_channel_dt));
 
-	chan->channel = Si46xxCfg.freqIndex;
+	chan->channel = Si46xxCfg.wantedService.freqIndex;
 
-	// TODO: Version und so...
+	chan->listSize = data[5] | (data[6] << 8);
 
-	chan->listSize = (uint16_t) data[5] + (data[6] << 8);
-
-	//length = (uint16_t) data[5] + (data[6] << 8);
 	printf("Si46xx: Size of service list: %d bytes \n", chan->listSize);
-
-	//Si46xxCfg.image = spiBuffer[5];
 
 	state = Si46xx_SPIgetAnalyzeStatus(data, 6 + chan->listSize);
 
@@ -874,125 +871,131 @@ Si46xx_statusType Si46xx_Msg_GetDigitalServiceList_receiveFunc()
 	}
 
 	// Send message for debug
-	printf("sSrvList_%d\n", 6+chan->listSize);
-	CDC_Transmit_FS(data, 6+chan->listSize);
-
-	/* TODO: Digitale Serviceliste auswerten:
-	 * 8.5
- Finding a Digital Service
-Before starting a data service, the host must collect information about the services that exist in the ensemble. This is
-done using the GET_DIGITAL_SERVICE_LIST host command. The service list definitions for DAB is described in
-“8.5.1. DAB/DMB Radio Service List”, the following table shows the format of the GET_DIGITAL_SERVICE_LIST
-host command.
-	 *
-	 */
-
-	// TODO: In richtige Liste einbauen, damit man das später auch abrufen kann... Zunächst mit fixer Svc/Cmp-Listenbreite?
+	//printf("sSrvList_%d\n", 6+chan->listSize);
+	// Get whole list with known size now
+	//CDC_Transmit_FS(data, 6+chan->listSize);
 
 	uint8_t * bufPtr = data + 5; // Point to List Size
 	chan->listSize = bufPtr[0] + (bufPtr[1] << 8);
+	chan->version  = bufPtr[2] + (bufPtr[3] << 8);
 
-	chan->version = bufPtr[2] + (bufPtr[3] << 8);
-
-	//uint8_t numberServices = bufPtr[4];
-	chan->numServices = bufPtr[4];
-	printf("Si46xx: # of services: %d \n", chan->numServices);
+	uint8_t numServices = bufPtr[4];
+	printf("Si46xx: Version: %u, # of services: %d \n", chan->version, numServices);
 
 	uint8_t position = 8; // initial...
 	bufPtr += position;
 
+	printf("sAddServices_%s", DAB_frequency_list[chan->channel].name);
+
 	// Loop through services
-	for(uint8_t i=0; i<chan->numServices; i++)
+	uint8_t serviceCnt = 0;
+	for(uint8_t i=0; i<numServices; i++)
 	{
-		chan->services[i].serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
-		//uint32_t serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
+		dab_service_t currentService;
 
-		chan->services[i].pdFlag = bufPtr[4] & 0x01;
-		//uint8_t pdFlag = bufPtr[4] & 0x01;
+		// Get Service Identifier SId and Program Data flag
+		currentService.serviceID = bufPtr[0] + (bufPtr[1] << 8) + (bufPtr[2] << 16) + (bufPtr[3] << 24);
+		currentService.pdFlag    = bufPtr[4] & 0x01;
 
-		struct serviceID_P // P/D=0
+		switch(currentService.pdFlag)
 		{
-			uint16_t SRV_REF:12;
-			uint8_t CountryID:4;
-			uint16_t RFU;
-		};
-
-		struct serviceID_D // P/D=1
-		{
-			uint32_t SRV_REF:20;
-			uint8_t CountyID:4;
-			uint8_t ECC;
-		};
-
-		uint8_t numberComponents = bufPtr[5] & 0x0F;
-		char serviceLabel[16+1];
-		memcpy(serviceLabel, &bufPtr[8], 16);
-		serviceLabel[16] = '\0';
-
-		//printf("Si46xx: ServiceID: %lX, P/D: %d, Label: %s \n", chan->services[i].serviceID, chan->services[i].pdFlag, serviceLabel);
-
-		struct serviceID_P * srvID_P;
-		struct serviceID_D * srvID_D;
-
-		switch(chan->services[i].pdFlag)
-		{
-			case AUDIO_SERVICE:
-				srvID_P = (struct serviceID_P*) chan->services[i].serviceID;
-				//printf("Si46xx: SRV_REF: %X CountryID: %d\n", srvID_P->SRV_REF, srvID_P->CountryID);
+			case PID_PROGRAMME_SERVICE:
+				currentService.countryId = (bufPtr[2]>>4) & 0xF;
 				break;
 
-			case DATA_SERVICE:
-				srvID_D = (struct serviceID_D*) chan->services[i].serviceID;
-				//printf("Si46xx: SRV_REF: %X CountryID: %d, ECC: %X\n", srvID_D->SRV_REF, srvID_D->CountyID, srvID_D->ECC);
+			case PID_DATA_SERVICE:
+				currentService.countryId = (bufPtr[3]>>4) & 0xF;
 				break;
 		}
 
+		currentService.programType = (bufPtr[4]>>1) & 0xF; // PTy
+		//  SrvLinkingInfo Flag— P/D Flag
+
+		uint8_t numComponents = bufPtr[5] & 0x0F;
+		// CAId: Not used
+		currentService.localFlag = (bufPtr[5]>>7) & 0x01;
+
+		currentService.charset = bufPtr[6] & 0xF;
+
+		// Already needs the charset, eg. "WDR 2 Köln"
+		memcpy(currentService.serviceLabel, &bufPtr[8], 16);
+		currentService.serviceLabel[16] = '\0';
+
+		//printf("sAddService_%s_%lu#enum_program_data_flag#%u#enum_program_type_codes#%u_%u_%s\n",
+		//		DAB_frequency_list[chan->channel].name, currentService.serviceID, currentService.pdFlag,
+		//		currentService.programType, currentService.localFlag, currentService.serviceLabel);
+
+		//printf("Si46xx: ServiceID: %lX, P/D: %d, Label: %s \n", currentService.serviceID, currentService.pdFlag, serviceLabel);
 		//printf("Si46xx: # of components: %d \n", numberComponents);
 
 		// Jump to components
-		//position += 24;
 		bufPtr += 24;
 
 		// Loop through components in the service
-		for(uint8_t j=0; j<numberComponents; j++)
+		uint8_t componentCnt = 0;
+
+		for(uint8_t j=0; j<numComponents; j++)
 		{
-			dab_component_t * comp = &chan->services[i].components[j];
+			uint8_t serviceToList = 0;
+			dab_component_t comp;
+			//dab_component_t * comp = &currentService.components[j];
 
-			// Adjust pointer to current component
-			//bufPtr += position;
+			comp.tmID = bufPtr[1] >> 6;
+			comp.componentID = bufPtr[0] | (bufPtr[1] << 8);
 
-			comp->tmID = bufPtr[1] >> 6;
-			comp->componentID = 0;
-
-			//uint8_t tmID = bufPtr[1] >> 6;
-			//uint16_t componentID = 0;
-
-			switch(comp->tmID) // Component ID depends on the TM ID
+			switch(comp.tmID) // Component ID depends on the TM ID
 			{
-				case 0: // TMId=00 (MSC stream audio)
-				case 1: // TMId=01 (MSC stream data)
-				case 2: // TMId=10 (Reserved)
-					comp->componentID = bufPtr[0] & 0x3F; // TODO: da muss TMiD eigentlich noc han den Anfang, fällt nur nicht auf, weil es 0 ist...
+				case TMId_MSC_STREAM_AUDIO: // TMId=00 (MSC stream audio)
+				case TMId_MSC_STREAM_DATA: // TMId=01 (MSC stream data)
+				//case 2: // TMId=10 (Reserved)
 					break;
 
-				case 3: // TMId=11 (MSC packet data)
-					//comp->componentID = bufPtr[0] + ((bufPtr[1] & 0x0F) << 8);
-					comp->componentID = bufPtr[0] | (bufPtr[1] << 8);
+				case TMId_MSC_PACKET_DATA: // TMId=11 (MSC packet data)
+					//comp->componentID = bufPtr[0] | (bufPtr[1] << 8);
 					// DGFlag is on Bit 13
 					break;
 			}
 
-			comp->ascTy_dscTy = bufPtr[2] >> 2;
-			//uint8_t ascTy_dscTy = bufPtr[2] >> 2;
-
+			comp.ascTy_dscTy = bufPtr[2] >> 2;
 
 			//printf("Si46xx:      TMId: %X, ComponentID: %X, ASCTy/DSCTy: %d\n", comp->tmID, comp->componentID, comp->ascTy_dscTy);
 
+			// TODO Filter konfiguieren
+			if(Si46xxCfg.cfg.audio_only == 0 || comp.tmID == TMId_MSC_STREAM_AUDIO)
+			{
+				// Print service information only for the first component
+				if(componentCnt == 0)
+				{
+					chan->services[serviceCnt] = currentService;
+
+					printf("_%lu_%u_%u_%u_%s",currentService.serviceID, currentService.pdFlag,
+							currentService.programType, currentService.localFlag, currentService.serviceLabel);
+
+					serviceToList = 1;
+				}
+
+				chan->services[serviceCnt].components[componentCnt] = comp;
+				printf("_comp_%u_%u_%u", comp.componentID, comp.tmID, comp.ascTy_dscTy);
+
+				componentCnt++;
+				chan->services[serviceCnt].numberComponents = componentCnt;
+			}
+
+			if(serviceToList)
+			{
+				serviceCnt++;
+			}
+
 			// Jump to next component in current service block
-			//position += 4;
 			bufPtr += 4;
 		}
+
 	}
+	printf("\n");
+
+	chan->numServices = serviceCnt;
+
+	Si46xxCfg.deviceStatus.channelList_valid = IS_VALID;
 
 	return state;
 }
@@ -1007,7 +1010,7 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 	//Si46xxCfg.freqIndex = DAB_Chan_5C;
 
 	// Check configuration
-	if(Si46xxCfg.freqIndex > 47)
+	if(Si46xxCfg.wantedService.freqIndex > 47)
 	{
 		return HAL_ERROR;
 	}
@@ -1019,7 +1022,7 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 	{
 		data[0] = SI46XX_SPI_CMD_DAB_TUNE_FREQ;
 		data[1] = 0x00;
-		data[2] = Si46xxCfg.freqIndex;
+		data[2] = Si46xxCfg.wantedService.freqIndex;
 		data[3] = 0x00;
 
 		/* ANTCAP[15:0] (data[4] und data[5])
@@ -1038,8 +1041,8 @@ HAL_StatusTypeDef Si46xx_Msg_DABtuneFreq_sendFunc()
 
 		Si46xxCfg.deviceStatus.STC = Si46xx_STCINT_INCOMPLETE; // Reset STCINT
 
-		Si46xxCfg.deviceStatus.VALID = NOT_VALID;
-		Si46xxCfg.deviceStatus.ACQ = NO_ACQ;
+		Si46xxCfg.deviceStatus.VALID  = NOT_VALID;
+		Si46xxCfg.deviceStatus.ACQ    = NO_ACQ;
 		Si46xxCfg.deviceStatus.FICERR = NO_FICERR;
 
 		// As maximum wait time:
@@ -1059,9 +1062,12 @@ Si46xx_statusType Si46xx_Msg_DABtuneFreq_receiveFunc()
 		return state;
 	}
 
-	// Reset the indexes, as they are different on this ensemble
-	Si46xxCfg.wantedService.serviceID = 0;
-	Si46xxCfg.wantedService.componentID = 0;
+	// Reset the IDs for first element, as they are different on this ensemble
+	Si46xxCfg.wantedService.serviceID_index = 0;
+	Si46xxCfg.wantedService.componentID_index = 0;
+
+	Si46xxCfg.deviceStatus.channelList_valid = NOT_VALID;
+	printf("sTuneFreq_%s\n", DAB_frequency_list[Si46xxCfg.wantedService.freqIndex].name);
 
 	return state;
 }
@@ -1086,8 +1092,9 @@ HAL_StatusTypeDef Si46xx_Msg_StartDigitalService_sendFunc()
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
 		// Get current service and component ID from wanted indexes
-		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
-		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
+		// TODO noch mit Pointer aufräumen
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].serviceID;
+		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].components[Si46xxCfg.wantedService.componentID_index].componentID;
 
 		data[0x0] = SI46XX_SPI_CMD_START_DIGITAL_SERVICE;
 		data[0x1] = 0x00 | 1;
@@ -1109,6 +1116,7 @@ HAL_StatusTypeDef Si46xx_Msg_StartDigitalService_sendFunc()
 		state = Si46xx_SPIsend(Si46xxCfg.hspi, data, 0xC);
 
 		printf("Si46xx: Starting digital service...\n");
+
 	}
 
 	return state;
@@ -1118,7 +1126,17 @@ Si46xx_statusType Si46xx_Msg_StartDigitalService_receiveFunc()
 {
 	// TODO: das ist eigentlich eine generische Funktion, wie auch DABtuneFreq
 	uint8_t data[5];
+	dab_service_t * service = &Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index];
+
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 4);
+
+	if(state == Si46xx_OK)
+	{
+		// TODO nnoch sauberer
+		printf("sDigService_%u_%u_%s_%s_%s\n",
+				Si46xxCfg.wantedService.serviceID_index, Si46xxCfg.channelData.numServices,
+				DAB_frequency_list[Si46xxCfg.wantedService.freqIndex].name, Si46xxCfg.channelData.ensembleLabel, service->serviceLabel);
+	}
 
 	return state;
 }
@@ -1132,8 +1150,8 @@ HAL_StatusTypeDef Si46xx_Msg_StopDigitalService_sendFunc()
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
 		// Get current service and component ID from wanted indexes
-		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
-		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].serviceID;
+		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].components[Si46xxCfg.wantedService.componentID_index].componentID;
 
 		data[0x0] = SI46XX_SPI_CMD_STOP_DIGITAL_SERVICE;
 		data[0x1] = 0x00;
@@ -1305,6 +1323,14 @@ Si46xx_statusType Si46xx_Msg_DigradStatus_receiveFunc()
 	// FIB_ERROR_COUNT data[11 und 12]
 
 	tuned_frequency = data[13] | (data[14]<<8) | (data[15]<<16) | (data[16]<<24);
+
+	// TODO: Index auch einbauen und dann gucken, ob das mit dem Wunsch übereinstimmt
+
+	if(!Si46xxCfg.deviceStatus.VALID || !Si46xxCfg.deviceStatus.ACQ)
+	{
+		Si46xxCfg.events.no_acquisition = Si46xx_INTERRUPT;
+	}
+
 
 	printf("sDigrad_%u%u%u%u_%lu\n", data[6], data[7], data[8], data[9],
 			tuned_frequency);
@@ -1501,8 +1527,8 @@ HAL_StatusTypeDef Si46xx_Msg_DabGetComponentInfo_sendFunc()
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
 		// Get current service from wanted indexes
-		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
-		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].components[Si46xxCfg.wantedService.componentID].componentID;
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].serviceID;
+		uint32_t componentID = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].components[Si46xxCfg.wantedService.componentID_index].componentID;
 
 		data[0] = SI46XX_SPI_CMD_DAB_GET_COMPONENT_INFO;
 		data[1] = 0x00;
@@ -1528,24 +1554,23 @@ HAL_StatusTypeDef Si46xx_Msg_DabGetComponentInfo_sendFunc()
 Si46xx_statusType Si46xx_Msg_DabGetComponentInfo_receiveFunc()
 {
 	uint8_t data[0x36+1];
+	uint8_t * dataPtr = &data[1];
 	Si46xx_statusType state = Si46xx_SPIgetAnalyzeStatus(data, 0x35);
 
 	// TODO: erstmal hier definieren, falls irgendwann gebraucht
 
-	enum dab_languages language     = data[0x07] & 0x3F;
-	enum dab_charset_values charset = data[0x08] & 0x3F;
+	uint8_t global_id               = dataPtr[4];
+	enum dab_languages language     = dataPtr[6] & 0x3F;
+	enum dab_charset_values charset = dataPtr[7] & 0x3F;
 
-	char label[16+1] = {0, };
-	memcpy(&label, &data[0x09], 16);
+	char * label      = (char*) &dataPtr[8]; // 16 bytes
+	char * abrevLabel = (char*) &dataPtr[0x18]; // 2 bytes
 
-	char abrevLabel[2+1] = {0, };
-	memcpy(&abrevLabel, &data[0x19], 2);
+	uint8_t numua     = dataPtr[0x1A]; /* The number of user application types. */
+	uint8_t lenua     = dataPtr[0x1B]; /* The total length (in byte) of the UATYPE, UADATALEN and UADATA fields, including the padding bytes which is described in UADATAN field. */
 
-
-	uint8_t num_ua     = data[0x1B]; /* The number of user application types. */
-	uint8_t ua_bytelen = data[0x1C]; /* The total length (in byte) of the UATYPE, UADATALEN and UADATA fields, including the padding bytes which is described in UADATAN field. */
-	enum user_application_type_en ua_type = data[0x1D] | (data[0x1E]<<8);
-	uint8_t ua_data_len = data[0x1F]; /* The UADATA field length, excluding the padding byte which is described in UADATAN field. */
+	enum user_application_type_en ua_type = dataPtr[0x1C] | (dataPtr[0x1D]<<8);
+	uint8_t ua_data_len = dataPtr[0x1E]; /* The UADATA field length, excluding the padding byte which is described in UADATAN field. */
 
 	/* Slideshow:
 	 * ETSI TS 101 499 V3.1.1 , 6.1
@@ -1554,9 +1579,49 @@ Si46xx_statusType Si46xx_Msg_DabGetComponentInfo_receiveFunc()
 
 	// TODO auswerten und in Variablen packen
 
-	printf("Component Info:\n");
-	printf("language %u, charset %u, label %s, abrevLabel %s\n", language, charset, label, abrevLabel);
-	printf("num_ua %u, ua_bytelen %u, ua_type %u, ua_data_len %u\n", num_ua, ua_bytelen, ua_type, ua_data_len);
+	printf("Component Info: global_id %u\n", global_id);
+	printf("language #enum_dab_languages#%u, charset #enum_dab_charset_values#%u, label %.*s, abrevLabel %.*s\n",
+			language, charset, 16, label, 2, abrevLabel);
+	printf("numua %u, lenua %u, ua_type #enum_user_application_type_en#%u, ua_data_len %u\n", numua, lenua, ua_type, ua_data_len);
+
+	// ETSI EN 300 401 V2.1.1, chapter 6.3.6
+	struct user_application_information
+	{
+		uint8_t ca_flag:1;
+		uint8_t ca_org_flag:1;
+
+		enum xpad_appType appType:5;
+
+		uint8_t dataGroup_flag:1;
+		enum ASCTy_DSCTy_type DSCTy_type:6;
+		uint16_t CAOrg;
+
+	};
+
+	dataPtr += 0x1F;
+
+	while(ua_data_len > 0)
+	{
+		struct user_application_information applicationInfo = {
+				.ca_flag        = (dataPtr[0]>>7) & 0x01,
+				.ca_org_flag    = (dataPtr[0]>>6) & 0x01,
+				.appType        = dataPtr[0] & 0x1F,
+				.dataGroup_flag = (dataPtr[1]>>7) & 0x01,
+				.DSCTy_type     = dataPtr[1] & 0x3F
+		};
+		dataPtr     += 2;
+		ua_data_len -= 2;
+
+		if(applicationInfo.ca_flag)
+		{
+			applicationInfo.CAOrg = (dataPtr[1]<<8) | dataPtr[2];
+			dataPtr += 2;
+			ua_data_len -= 2;
+		}
+
+		printf("ca_flag %u, ca_org_flag %u, appType #enum_xpad_appType#%u, DG %u, DSCTy #enum_ASCTy_DSCTy_type#%u\n",
+				applicationInfo.ca_flag, applicationInfo.ca_org_flag, applicationInfo.appType, applicationInfo.dataGroup_flag, applicationInfo.DSCTy_type);
+	}
 
 	return state;
 }
@@ -1570,7 +1635,7 @@ HAL_StatusTypeDef Si46xx_Msg_GetServiceInfo_sendFunc()
 	if(Si46xxCfg.deviceStatus.CTS == Si46xx_CTS_READY)
 	{
 		// Get current service from wanted indexes
-		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID].serviceID;
+		uint32_t serviceID   = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].serviceID;
 
 		data[0] = SI46XX_SPI_CMD_GET_SERVICE_INFO;
 		data[1] = 0x00;

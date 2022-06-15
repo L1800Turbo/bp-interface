@@ -56,7 +56,7 @@
 /* It's up to user to redefine and/or remove those define */
  // Angepasst für SPI-Übertragung mit 4kB-Blöcken
 #define APP_RX_DATA_SIZE  8192
-#define APP_TX_DATA_SIZE  8192
+#define APP_TX_DATA_SIZE  16384 //8192
 
 
 /* USER CODE END EXPORTED_DEFINES */

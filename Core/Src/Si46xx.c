@@ -59,7 +59,7 @@ struct property baseProperties[BASE_PROPERTY_NO] =
 		{.index = DIGITAL_SERVICE_INT_SOURCE, .data = 0x0001},
 		{.index = INT_CTL_ENABLE,             .data = (INT_CTL_DEVNTIEN | INT_CTL_CTSIEN | INT_CTL_DACQIEN | INT_CTL_DSRVIEN | INT_CTL_STCIEN)},
 		{.index = DAB_EVENT_INTERRUPT_SOURCE, .data = SRVLIST_INTEN },
-		{.index = DAB_XPAD_ENABLE,            .data = (MOT_SLS_ENABLE | DLS_ENABLE)}
+		{.index = DAB_XPAD_ENABLE,            .data = (/*MOT_SLS_ENABLE |*/ DLS_ENABLE)}
 };
 uint8_t currentProperty = 0;
 
@@ -93,6 +93,9 @@ void Si46xx_radio_tasks(void)
 {
 	switch(Si46xxCfg.radio_states)
 	{
+		case Si46xx_Radio_Off:
+			break;
+
 		case Si46xx_Radio_Start:
 			// Reset device
 			Si46xx_Reset();
@@ -229,11 +232,6 @@ void Si46xx_radio_tasks(void)
 			Si46xx_Push(SI46XX_MSG_GET_PART_INFO);
 			Si46xx_Push(SI46XX_MSG_GET_FUNC_INFO);
 
-			// Set property
-			//Si46xxCfg.wantedProperty.property = DIGITAL_SERVICE_INT_SOURCE;
-			//Si46xxCfg.wantedProperty.data = 1; // DSRVPCKTINT
-			//Si46xx_Push(SI46XX_MSG_SET_PROPERTY);
-
 			Si46xxCfg.radio_states++;
 			break;
 
@@ -275,14 +273,15 @@ void Si46xx_radio_tasks(void)
 
 				printf("Event: acquisition_state_change \n");
 
-				if(Si46xxCfg.deviceStatus.VALID == IS_VALID)
+				if(Si46xxCfg.deviceStatus.VALID == IS_VALID) // TODO: auhc FIC Quality und SIG Level prüfen
 				{
 					//if(Si46xxCfg.deviceStatus.FIC_QUALITY >= xy) TODO: laut Manual soll man FIC Quality und Sig Level prüfen
 					Si46xx_Push(SI46XX_MSG_GET_EVENT_STATUS);
 				}
-				else
+				else // TOOO Hier kommt er nicht hin, wenn er den Sender gar nicht erst rein bekommt
 				{
 					// TODO: Hätte er hier dann den Sender verloren?
+					printf("Tuned frequency not valid!\n");
 				}
 			}
 
@@ -302,27 +301,153 @@ void Si46xx_radio_tasks(void)
 				Si46xx_Push(SI46XX_MSG_GET_DIGITAL_SERVICE_DATA);
 			}
 
-			// TODO: So fortsetzen?
+			// If there is no acquisition and we want to react to it
+			if(Si46xxCfg.events.no_acquisition == Si46xx_INTERRUPT)
+			{
+				printf("Event: no_acquisition\n");
+				Si46xxCfg.events.no_acquisition = Si46xx_NORMAL;
+
+				printf("sEnsemble_invalid\n");
+
+				// Go to next ensemble if this one's not available
+				if(Si46xxCfg.cfg.forwardIfInvalid)
+				{
+					printf("Moving to the next channel\n");
+					Si46xxCfg.wantedService.freqIndex = (Si46xxCfg.wantedService.freqIndex+1) % DAB_Chan_SIZE;
+
+					// Reset these parameters as they won't be valid on the next one
+					Si46xxCfg.wantedService.serviceID_index   = 0;
+					Si46xxCfg.wantedService.componentID_index = 0;
+
+					Si46xx_Push(SI46XX_MSG_DAB_TUNE_FREQ);
+				}
+			}
+
+			// Fetch radio commands
+			if(Si46xxCfg.cmd.tuneEnsemble)
+			{
+				Si46xx_Push(SI46XX_MSG_DAB_TUNE_FREQ);
+				Si46xxCfg.cmd.tuneEnsemble = 0;
+
+				Si46xxCfg.deviceStatus.channelList_valid = NOT_VALID;
+			}
+
+			// If we got a valid channel list and want to start a service
+			if(Si46xxCfg.deviceStatus.channelList_valid == IS_VALID && Si46xxCfg.cmd.startService)
+			{
+				printf("Command: directly starting service\n");
+				// TODO: Man sollte besser die richtigen IDs statt nur der Positionen im Array speichern, oder?
+				Si46xx_Push(SI46XX_MSG_START_DIGITAL_SERVICE);
+
+				// Don't start looking if we lose this ensemble TODO: Konfigurierbar?
+				Si46xxCfg.cfg.forwardIfInvalid = 0;
+				Si46xxCfg.cmd.startService = 0;
+			}
+
+
 			break;
 	}
 
+	// TODO: Bootup-Flag? Also das andere Befehle nicht genommen werden, wenn das DAB gar nicht gebootet ist??
+}
+
+void Si46xx_DAB_play(enum DAB_play_functions func)
+{
+	printf("Si46xx_DAB_play: got command #enum_DAB_play_functions#%u\n", func);
+
+	if(Si46xxCfg.radio_states == Si46xx_Radio_Off)
+	{
+		Si46xxCfg.radio_states = Si46xx_Radio_Start;
+	}
+
+	Si46xxCfg.cfg.audio_only = 1; // TODO erstmal lose hier rein
+
+	// StartUp and Change Ensemble
+	if(func == DAB_Play_StartUp || func == DAB_Play_Up || func == DAB_Play_Down)
+	{
+		Si46xxCfg.cmd.tuneEnsemble = 1;
+		Si46xxCfg.cfg.forwardIfInvalid = 1;
+	}
+
+	// Channel change matrix
+	if(func == DAB_Play_Up)
+	{
+		Si46xxCfg.wantedService.freqIndex = (Si46xxCfg.wantedService.freqIndex+1) % (DAB_Chan_SIZE-1);
+	}
+	else if(func == DAB_Play_Down)
+	{
+		if(Si46xxCfg.wantedService.freqIndex == 0)
+		{
+			Si46xxCfg.wantedService.freqIndex = DAB_Chan_SIZE - 1;
+		}
+		else
+		{
+			Si46xxCfg.wantedService.freqIndex--;
+		}
+	}
+	else if(func == DAB_Play_Right)
+	{
+		// If last component in service
+		if(Si46xxCfg.wantedService.componentID_index == Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].numberComponents-1)
+		{
+			Si46xxCfg.wantedService.serviceID_index = (Si46xxCfg.wantedService.serviceID_index+1) % (Si46xxCfg.channelData.numServices-1);
+			Si46xxCfg.wantedService.componentID_index = 0;
+		}
+		else
+		{
+			Si46xxCfg.wantedService.componentID_index++;
+		}
+	}
+	else if(func == DAB_Play_Left)
+	{
+		// First component in service
+		if(Si46xxCfg.wantedService.componentID_index == 0)
+		{
+			if(Si46xxCfg.wantedService.serviceID_index == 0)
+			{
+				Si46xxCfg.wantedService.serviceID_index = Si46xxCfg.channelData.numServices -1;
+			}
+			else
+			{
+				Si46xxCfg.wantedService.serviceID_index--;
+			}
+			Si46xxCfg.wantedService.componentID_index = Si46xxCfg.channelData.services[Si46xxCfg.wantedService.serviceID_index].numberComponents-1;
+		}
+		else
+		{
+			Si46xxCfg.wantedService.componentID_index--;
+		}
+	}
+
+	Si46xxCfg.cmd.startService = 1; //TODO stop service hier noch irgendwo wegen Datenservice?
+
 	/*
 	 * TODO:
-	 * - Reset lösen
-	 * - Start-Befehl
-	 * - prepload + firmware-patch
-	 * - prepload + fw von spi-flash
-	 * - boot
+	 * - ChannelID festlegen auf 1 (oder letzter gespeicherter), falls noch nciht geschehen
+	 * - serviceID festlegen auf 1. (oder letzter gespeicherter), falls noch nicht geschehen
+	 * - componendID festlegen auf 1. (oder letzter gespeicherter), falls noch nicht geschehen
+	 *  wenn er die Channelliste noch nicht hat, kann er ja trotdem starten und die Liste kommt nach. Sollte am Display sowieso kont. akt. werden
+	 * - START_DIGITAL_SERVICE
 	 *
-	 * - senderliste senden und laden
+	 * - gespeicherte Sender:
+	 *   - separat abspeichern
+	 *   - dann passend abrufen und direkt Start machen, der Rest mit Channelliste kann ja danach kommen
 	 *
-	 * - auf einen Sender tunen?
+	 * wie soll diese Funktion durchlaufen? nur Flags setzen?
 	 */
+
+	// Assuming frequency list has been synched during bootup
+
 }
 
 /* State machine taking care of the SPI communication funcitons */
 void Si46xx_function_tasks(void)
 {
+	if(Si46xxCfg.radio_states == Si46xx_Radio_Off)
+	{
+		return;
+	}
+
 	// Run sub-state machine for firmware jobs
 	Si46xx_firmware_tasks();
 
@@ -520,7 +645,7 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	Si46xxCfg.initConfig = init;
 	Si46xxCfg.hspi = hspi;
 
-	Si46xxCfg.radio_states = Si46xx_Radio_Idle;
+	Si46xxCfg.radio_states = Si46xx_Radio_Off;
 	Si46xxCfg.function_state = Si46xx_STATE_IDLE;
 	resetState = Si46xx_RST_SET;
 
@@ -539,7 +664,11 @@ HAL_StatusTypeDef Si46xx_InitConfiguration(SPI_HandleTypeDef * hspi)
 	Si46xxCfg.firmware_flash_address = 0x000; // 0x200
 
 	// Init first channel TODO später vom EEPROM?
-	Si46xxCfg.freqIndex = 0;
+	Si46xxCfg.wantedService.freqIndex   = 0;
+	Si46xxCfg.wantedService.serviceID_index   = 0;
+	Si46xxCfg.wantedService.componentID_index = 0;
+
+	Si46xxCfg.deviceStatus.channelList_valid = NOT_VALID;
 
 	return HAL_OK;
 }

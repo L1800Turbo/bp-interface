@@ -152,10 +152,6 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 		if(strncmp(messageStr, "sst", 3) == 0)
 		{
 			cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[SI46XX_MSG_REFRESH_SYS_STATE]);
-			//CDC_Transmit_FS((uint8_t *) "sst ", 4);
-			//CDC_Transmit_FS((uint8_t*) &Si46xxCfg.deviceStatus, sizeof(Si46xx_Status_Values_dt));
-			//CDC_Transmit_FS((uint8_t*) &Si46xxCfg.image, sizeof(enum Si46xx_Image));
-			//CDC_Transmit_FS((uint8_t*) "\n", 1);
 		}
 
 		// get a list of possible commands to run directly
@@ -181,6 +177,39 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			{
 				//printf("Got command index %d\n", cmdIndex);
 				cb_push_back(&Si46xxCfg.cb, &Si46xx_messages[cmdIndex]); //SI46XX_MSG_REFRESH_SYS_STATE z.B. 1
+			}
+		}
+
+		// Change config
+		else if(strncmp(messageStr, "sCfg", 4) == 0)
+		{
+			char * cmd = &messageStr[5];
+
+			if(strncmp(cmd, "audioOnly", 9) == 0)
+			{
+				uint8_t state = atoi(&cmd[10]);
+				if(state)
+				{
+					Si46xxCfg.cfg.audio_only = 1;
+					printf("Taking only audio services into list...\n");
+				}
+				else
+				{
+					Si46xxCfg.cfg.audio_only = 0;
+				}
+			}
+			else if(strncmp(cmd, "setForwardIfInvalid", 19) == 0)
+			{
+				uint8_t state = atoi(&cmd[20]);
+				if(state)
+				{
+					Si46xxCfg.cfg.forwardIfInvalid = 1;
+					printf("Forwarding to next channel if tuning invalid...\n");
+				}
+				else
+				{
+					Si46xxCfg.cfg.forwardIfInvalid = 0;
+				}
 			}
 		}
 
@@ -221,7 +250,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			Si46xxCfg.firmware.current_flash_address  = address;
 		}
 
-		// Tune to a frequency, refresh the contents of it: stune_n
+		// Tune to a frequency, refresh the contents of it: stune_n TODO: Das hier in die Eigene Play-Funktion?
 		else if(strncmp(messageStr, "stune", 5) == 0)
 		{
 			enum DAB_frequencies channelIndex = atoi(&messageStr[6]);
@@ -229,7 +258,7 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			// Check if channel param was valid
 			if(channelIndex >= 0 && channelIndex < DAB_Chan_SIZE)
 			{
-				Si46xxCfg.freqIndex = channelIndex;
+				Si46xxCfg.wantedService.freqIndex = channelIndex;
 
 				printf("Si46xx: Tuning to channel index %d: %s\n", channelIndex, DAB_frequency_list[channelIndex].name);
 
@@ -272,8 +301,8 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 				{
 					componentID_index = atoi(strPtr);
 
-					Si46xxCfg.wantedService.serviceID   = serviceID_index;
-					Si46xxCfg.wantedService.componentID = componentID_index;
+					Si46xxCfg.wantedService.serviceID_index   = serviceID_index;
+					Si46xxCfg.wantedService.componentID_index = componentID_index;
 
 					printf("Si46xx: Selected serviceID %lu, componentID: %u \n",
 							Si46xxCfg.channelData.services[serviceID_index].serviceID,
@@ -417,6 +446,32 @@ void cdc_Interface_AnalyzeFunction(char * messageStr)
 			{
 				printf("sfile_err\n");
 			}
+		}
+	}
+
+	// Radio Commands
+	else if(strncmp(messageStr, "rOn", 3) == 0)
+	{
+		// aktuell: einfach play
+		Si46xx_DAB_play(DAB_Play_StartUp);
+	}
+
+	else if(strncmp(messageStr, "rCtrl", 5) == 0)
+	{
+		switch(messageStr[6])
+		{
+			case 'u': // up
+				Si46xx_DAB_play(DAB_Play_Up);
+				break;
+			case 'd': // down
+				Si46xx_DAB_play(DAB_Play_Down);
+				break;
+			case 'l': // left
+				Si46xx_DAB_play(DAB_Play_Left);
+				break;
+			case 'r': // right
+				Si46xx_DAB_play(DAB_Play_Right);
+				break;
 		}
 	}
 

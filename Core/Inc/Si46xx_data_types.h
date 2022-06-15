@@ -53,6 +53,12 @@ enum Si46xx_Switch {
 	Si46xx_ENABLE  = 1
 };
 
+enum Si46xx_VALID_en
+{
+	NOT_VALID = 0,
+	IS_VALID  = 1
+};
+
 // Enum for state machine
 typedef enum
 {
@@ -184,14 +190,11 @@ typedef struct
 	enum Si46xx_STCINT STC;		/* Seek/Tune Complete */
 
 	/* DIGRAD status values */
-	enum Si46xx_VALID_en
-	{
-		NOT_VALID = 0,
-		IS_VALID  = 1
-	}VALID; /* When set to 1, the RSSI is at or above the valid threshold. It is recommended that the valid bit be used as part of tune validation.
+	enum Si46xx_VALID_en VALID; /* When set to 1, the RSSI is at or above the valid threshold. It is recommended that the valid bit be used as part of tune validation.
 				Once STC is set the valid bit can be checked to verify that then tune has passed both the RSSI valid threshold and that acquisition
 				has been achived. The host should set the RSSI thershold, validation time and acquisition time to achieve solid tune time performance.
 				Doing this helps insure an accurate tune indication and helps to decrease scan times due to quick station disqualification. */
+	// TODO: besagte Tipps durchführen
 
 	enum Si46xx_ACQ_en
 	{
@@ -208,6 +211,9 @@ typedef struct
 	int8_t RSSI; // Received signal strength indicator in dBuV.
 	int8_t SNR;  // Indicates the current estimate of the digital SNR in dB.
 	uint8_t FIC_QUALITY; // Indicates the current estimate of the ensemble's FIC quality. The number provided is between 0 and 100.
+
+	// Beyond Si46xx functions
+	enum Si46xx_VALID_en channelList_valid;
 }Si46xx_Status_Values_dt;
 
 struct Si46xx_Init_Values {
@@ -241,22 +247,49 @@ typedef enum
 typedef struct
 {
 	uint16_t componentID;
-	uint8_t tmID;
 
-	uint8_t ascTy_dscTy;	// ASCTy: Audio service component type, DSCTy: Data service component type TODO: enum
+	enum tm_ID
+	{
+		TMId_MSC_STREAM_AUDIO = 0b00,
+		TMId_MSC_STREAM_DATA  = 0b01,
+		TMId_MSC_PACKET_DATA  = 0b11,
+	}tmID;
+
+	//uint8_t tmID;
+
+	enum ASCTy_DSCTy_type ascTy_dscTy;
 
 }dab_component_t;
 
 typedef struct
 {
 	uint32_t serviceID;
+
+	/* P/D: this 1-bit flag shall indicate, according to the Extension, whether the Service Identifiers (SIds) are in
+	 * the 16-bit or 32-bit format, as follows:
+	 *   0: 16-bit SId, used for programme services;
+	 *   1: 32-bit SId, used for data services. */
 	enum program_data_flag
 	{
-		AUDIO_SERVICE = 0,
-		DATA_SERVICE  = 1
+		PID_PROGRAMME_SERVICE = 0,
+		PID_DATA_SERVICE  = 1
 	}pdFlag;
+
+	/* Country ID */
+	enum itu_country_ids countryId;
+
+	/* ECC (Extended Country Code) -> only P/D type data */
+	//uint8_t itu_country_ecc; not interesting so far
+
+	enum program_type_codes programType;
+
+	/* Indicates if the service is available over the entire (0) or part (1) of the ensemble service area. */
+	uint8_t localFlag:1;
+
 	//uint8_t pdFlag;
 	uint8_t numberComponents;
+	enum dab_charset_values charset;
+
 	char serviceLabel[16+1];
 
 	dab_component_t components[MAX_COMPONENTS];
@@ -342,7 +375,7 @@ struct Si46xx_Config
 	/* SPI handler */
 	SPI_HandleTypeDef * hspi;
 
-	/* Initial configuration */
+	/* Initial IC configuration */
 	struct Si46xx_Init_Values initConfig;
 
 	/* Version information about the SI46XX device */
@@ -367,7 +400,8 @@ struct Si46xx_Config
 	/* State of generic radio state machine */ // TODO hier raus, in si46xx
 	enum radio_states_en
 	{
-		Si46xx_Radio_Idle = 0,
+		Si46xx_Radio_Off = 0,
+		Si46xx_Radio_Idle,
 		Si46xx_Radio_Start,
 		Si46xx_Radio_Start_Wait,
 		Si46xx_Radio_Patch,
@@ -427,17 +461,31 @@ struct Si46xx_Config
 		// Von SI46XX_MSG_GET_EVENT_STATUS
 		uint8_t freq_info_int:1; 	/* New Frequency Information interrupt. Indicates that new Frequency Information is available. The Frequency Information list is retrieved with the DAB_GET_FREQ_INFO command. The rate at which frequency information interrupts can occur is defined by the DAB_EVENT_MIN_FREQINFO_PERIOD property. */
 		uint8_t service_list_int:1; /* New service list interrupt. Indicates that a new digital service list is available. The new service list is retrieved with the GET_DIGITAL_SERVICE_LIST command. */
+
+		// Own interrupts
+		enum Si46xx_INT no_acquisition;
 	}events;
 
-	enum DAB_frequencies freqIndex;  // TODO: aktueller FreqInd, um mit Channeldata zu vergleichen?
-
-	struct wantedService
+	struct DAB_configuration // TODO: Sachen wie: nur audio, AF-Funktion, Verkehrsfunk nutzen, ...
 	{
-		uint8_t serviceID;
-		uint8_t componentID;
+		uint8_t audio_only:1;       // Only add audio services to service list
+		uint8_t forwardIfInvalid:1; // Tune to the next channel if no valid signal
+	}cfg;
+
+	struct wantedServiceIndex
+	{
+		enum DAB_frequencies freqIndex;  // TODO: aktueller FreqInd, um mit Channeldata zu vergleichen?
+		uint8_t serviceID_index;
+		uint8_t componentID_index;
 	}wantedService;
 
 	dab_channel_dt channelData; // to contain the data of the current channel
+
+	struct Si46xx_commands
+	{
+		uint8_t tuneEnsemble:1;     // Tune so specified (or default) ensemble (enum DAB_frequencies freqIndex)
+		uint8_t startService:1;     // Start service for given (or first) value in ensemble
+	}cmd;
 
 };
 

@@ -24,7 +24,7 @@
 #define SI46XX_CS_OFF() HAL_GPIO_WritePin(CS_SPI_SI46xx_GPIO_Port, CS_SPI_SI46xx_Pin, GPIO_PIN_SET)
 
 // Enum for possible SPI commands
-enum Si46xx_SPI_commands { // TODO: Noch alle passend umbenennen
+enum Si46xx_SPI_commands {
 	/* Boot commands */
 	SI46XX_SPI_CMD_RD_REPLY      			= 0x00,	/* Returns the status byte and data for the last command sent to the device. 			*/
 	SI46XX_SPI_CMD_POWER_UP      			= 0x01,	/* Power-up the device and set system settings. 										*/
